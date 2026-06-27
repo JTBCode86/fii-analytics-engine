@@ -1,0 +1,105 @@
+services:
+  # ============================================================================
+  # 0. BUILD ISOLADO DAS LAMBDAS
+  # ============================================================================
+  lambda-builder:
+    image: python:3.10-slim
+    container_name: fiianalytics_lambda_builder
+    networks:
+      - fiianalytics_network
+    volumes:
+      - .:/app
+      - lambda_dist:/tmp/lambda_dist
+    entrypoint: >
+      /bin/sh -c "
+      apt-get update && apt-get install -y zip &&
+      echo '-> Construindo pacote processar_carteira.zip nativo Linux...' &&
+      rm -rf /tmp/lambda_dist/processar_carteira.zip &&
+      mkdir -p /tmp/build &&
+      pip install --target /tmp/build -r /app/serverless/lambdas/processar_carteira/requirements.txt --no-cache-dir --quiet &&
+      cp /app/serverless/lambdas/processar_carteira/handler.py /tmp/build/ &&
+      cd /tmp/build && rm -rf *.dist-info __pycache__ && chmod -R 755 . &&
+      zip -r -q /tmp/lambda_dist/processar_carteira.zip . &&
+      echo '-> Build concluído com sucesso!' &&
+      rm -rf /tmp/build
+      "
+
+  # ============================================================================
+  # 1. INFRAESTRUTURA AWS (LOCALSTACK 3.0)
+  # ============================================================================
+  localstack:
+    container_name: fiianalytics_localstack
+    image: localstack/localstack:3.0
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      - AWS_DEFAULT_REGION=us-east-1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - DOCKER_FLAGS=--rm --network=fiianalytics_network
+      - LAMBDA_TIMEOUT=60
+      - LAMBDA_RUNTIME_ENVIRONMENT_TIMEOUT=120
+      - LAMBDA_KEEP_ALIVE=300
+      - LAMBDA_EXECUTOR=docker
+      - LAMBDA_REMOTE_DOCKER=false
+      - LAMBDA_REMOVE_CONTAINERS=true
+      - LAMBDA_DOCKER_NETWORK=fiianalytics_network
+      - LOCALSTACK_HOST=localstack
+      - SERVICES=lambda,dynamodb,events,sqs,s3
+    networks:
+      fiianalytics_network:
+        aliases:
+          - localstack
+    volumes:
+      - "./localstack-init:/etc/localstack/init/ready.d"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - ".:/app"
+      - lambda_dist:/tmp/lambda_dist
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localstack:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      lambda-builder:
+        condition: service_completed_successfully
+
+  # ============================================================================
+  # 2. BACKEND API REST (C# .NET 9)
+  # ============================================================================
+  fii-api:
+    container_name: fiianalytics_api
+    build:
+      context: .
+      dockerfile: src/FiiAnalytics.API/Dockerfile
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - AWS__ServiceUrl=http://localstack:4566
+      - AWS__Region=us-east-1
+      - AWS__AccessKey=test
+      - AWS__SecretKey=test
+      - AWS_ACCESS_KEY_ID=mock_key
+      - AWS_SECRET_ACCESS_KEY=mock_secret
+      - TICKERS_LIST=["MXRF11", "HGLG11", "KNRI11"]
+      - TABLE_NAME=FiiAnalyticsDb
+      - DYNAMODB_ENDPOINT=http://localstack:4566
+      - S3_ENDPOINT=http://localstack:4566
+      
+    networks:
+      - fiianalytics_network
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+# Volumes compartilhados
+volumes:
+  lambda_dist:
+
+# Rede global consolidada
+networks:
+  fiianalytics_network:
+#    name: fiianalytics_network
+    driver: bridge
+#    attachable: true
