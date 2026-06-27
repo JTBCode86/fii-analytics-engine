@@ -1,23 +1,43 @@
-### AL ###
-#Template for AL projects for Dynamics 365 Business Central
-#launch.json folder
+# --- Docker ---
+docker-compose.override.yml
+.docker-ignore
+
+# --- Python / Lambdas ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.tox/
+
+# --- .NET / C# ---
+**/bin/
+**/obj/
+.vs/
 .vscode/
-#Cache folder
-.alcache/
-#Symbols folder
-.alpackages/
-#Snapshots folder
-.snapshots/
-#Testing Output folder
-.output/
-#Extension App-file
-*.app
-#Rapid Application Development File
-rad.json
-#Translation Base-file
-*.g.xlf
-#License-files
-*.bclicense
-*.flf
-#Test results file
-TestResults.xml
+*.user
+*.suo
+*.db
+*.opensdf
+
+# --- Infraestrutura e AWS (Sensíveis) ---
+# Nunca suba suas chaves reais se você criar arquivos locais
+.aws/
+credentials
+config
+# Arquivos de estado do LocalStack ou builds temporários
+*.zip
+lambda_dist/
+localstack-init/logs/
+
+# --- Sistema e Logs ---
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# --- Documentação do Projeto ---
+# Se for gerar documentos locais
+/docs/
