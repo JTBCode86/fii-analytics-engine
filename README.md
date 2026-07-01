@@ -13,13 +13,14 @@ O sistema foi desenhado para ser desacoplado e resiliente:
 
 ```mermaid
 graph TD
-    subgraph LocalStack ["LocalStack / Cloud AWS Simulada"]
+    subgraph LocalStack ["LocalStack / Cloud AWS"]
         A["API (.NET)"] -->|"1. Upload CSV"| B["Amazon S3"]
-        B -.->|"2. Evento"| C["processar-carteira-lambda"]
-        C -->|"3. Grava Dados"| D[("DynamoDB (Carteira)")]
-        C -->|"4. Envia Tickers"| E["SQS (scraper-queue)"]
-        E -.->|"5. Trigger Evento"| F["scraper-ativos-lambda"]
-        F -->|"6. Scraping StatusInvest"| G["Portal StatusInvest"]
+        B -.->|"2. Evento SQS"| C["processar-carteira-lambda"]
+        C -->|"3. Grava/Update"| D[("DynamoDB")]
+        
+        E["AWS EventBridge"] -->|"4. Trigger Temporal"| F["scraper-ativos-lambda"]
+        G["SQS (scraper-queue)"] -.->|"5. Trigger Evento"| F
+        F -->|"6. Scraping StatusInvest"| H["Portal StatusInvest"]
         F -->|"7. Atualiza Metadados"| D
     end
 ```
@@ -32,10 +33,9 @@ graph TD
 * 📜 **Infraestrutura:** Bash scripts (IaC) via `init-aws.sh`.
 
 ## Fluxo de Dados Automatizado
-1. 🎯 **Trigger:** O usuário faz o upload do arquivo CSV via API. O arquivo é armazenado no S3.
-2. ⚙️ **Processamento:** A processar-carteira-lambda é disparada automaticamente, processa o CSV, calcula o preço médio e persiste a carteira no DynamoDB.
-3. 📨 **Automação:** Para cada ativo processado, a Lambda dispara um evento na fila SQS (scraper-queue).
-4. 🤖 **Enriquecimento:** A scraper-ativos-lambda é ativada automaticamente pela fila, realiza o scraping no StatusInvest e atualiza o DynamoDB com cotação, DY e P/VP.
+1. 🎯 **Gatilho Reativo (Upload):** O usuário faz o upload da carteira via API. O arquivo vai para o S3 e o pipeline processa o CSV, calculando preço médio e alocação.
+2. ⏱️ **Manutenção de Mercado (EventBridge):** Periodicamente, o EventBridge dispara a scraper-ativos-lambda para varrer todos os ativos cadastrados no DynamoDB, garantindo que indicadores (P/VP, DY) reflitam o mercado atual.
+3. 🤖 **Enriquecimento Inteligente:** A scraper-ativos-lambda possui lógica de detecção de origem: se via SQS, processa ativos específicos; se via EventBridge, realiza a varredura global (self-healing).
 
 ## 🚀 Passo a Passo para Execução
 
