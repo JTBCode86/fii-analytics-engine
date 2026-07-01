@@ -37,12 +37,13 @@ aws --endpoint-url=$ENDPOINT dynamodb create-table \
 echo "-> Coletando pacote estável gerado pelo contêiner lambda-builder..."
 # Copia o zip puro do volume compartilhado para a pasta temporária local de deploy
 cp /tmp/lambda_dist/processar_carteira.zip /tmp/processar_carteira.zip
+cp /tmp/lambda_dist/scraper_ativos.zip /tmp/scraper_ativos.zip
 
 # ==============================================================================
 # 3. Upload para o S3 (Bypass do limite de 50MB) e Deploy
 # ==============================================================================
 
-echo "-> Fazendo upload do pacote pesado para o S3..."
+echo "-> Fazendo upload dos pacotes (.zip)"
 aws --endpoint-url=$ENDPOINT s3 cp /tmp/processar_carteira.zip s3://$BUCKET_NAME/packages/processar_carteira.zip --region $REGION
 
 echo "-> Efetuando Deploy da Lambda: processar-carteira-lambda (via S3)..."
@@ -55,19 +56,20 @@ aws --endpoint-url=$ENDPOINT lambda create-function \
     --timeout 60 \
     --region $REGION
 
-# --- Lambda 2: scraper-ativos-lambda (Leve, sem dependências pesadas) ---
+# --- Lambda 2: scraper-ativos-lambda
 echo "-> Preparando código da Lambda: scraper-ativos-lambda..."
-zip -q -j /tmp/scraper_ativos.zip /app/serverless/lambdas/scraper_ativos/handler.py
+aws --endpoint-url=$ENDPOINT s3 cp /tmp/scraper_ativos.zip s3://$BUCKET_NAME/packages/scraper_ativos.zip --region $REGION
 
-echo "-> Efetuando Deploy da Lambda: scraper-ativos-lambda..."
+echo "-> Efetuando Deploy da Lambda: scraper-ativos-lambda (via S3)..."
 aws --endpoint-url=$ENDPOINT lambda create-function \
     --function-name scraper-ativos-lambda \
     --runtime python3.10 \
     --role arn:aws:iam::000000000000:role/lambda-role \
     --handler handler.lambda_handler \
-    --zip-file fileb:///tmp/scraper_ativos.zip \
+    --code S3Bucket=$BUCKET_NAME,S3Key=packages/scraper_ativos.zip \
+    --timeout 60 \
     --region $REGION
-
+    
 # Limpeza dos resíduos locais temporários
 rm -f /tmp/processar_carteira.zip /tmp/scraper_ativos.zip
 

@@ -11,19 +11,23 @@ services:
       - .:/app
       - lambda_dist:/tmp/lambda_dist
     entrypoint: >
-      /bin/sh -c "
-      apt-get update && apt-get install -y zip &&
-      echo '-> Construindo pacote processar_carteira.zip nativo Linux...' &&
-      rm -rf /tmp/lambda_dist/processar_carteira.zip &&
-      mkdir -p /tmp/build &&
-      pip install --target /tmp/build -r /app/serverless/lambdas/processar_carteira/requirements.txt --no-cache-dir --quiet &&
-      cp /app/serverless/lambdas/processar_carteira/handler.py /tmp/build/ &&
-      cd /tmp/build && rm -rf *.dist-info __pycache__ && chmod -R 755 . &&
-      zip -r -q /tmp/lambda_dist/processar_carteira.zip . &&
-      echo '-> Build concluído com sucesso!' &&
-      rm -rf /tmp/build
-      "
-
+      bash -c "set -e;
+      echo 'Iniciando build...';
+      apt-get update && apt-get install -y zip;
+      rm -rf /tmp/build1 /tmp/build2;
+      mkdir -p /tmp/lambda_dist /tmp/build1 /tmp/build2;
+      
+      echo 'Instalando dependencias processar_carteira...';
+      pip install -r /app/serverless/lambdas/processar_carteira/requirements.txt -t /tmp/build1;
+      cp /app/serverless/lambdas/processar_carteira/handler.py /tmp/build1/;
+      cd /tmp/build1 && zip -r /tmp/lambda_dist/processar_carteira.zip .;
+      
+      echo 'Instalando dependencias scraper_ativos...';
+      pip install -r /app/serverless/lambdas/scraper_ativos/requirements.txt -t /tmp/build2 --platform manylinux2014_x86_64 --only-binary=:all: --target /tmp/build2;
+      cp /app/serverless/lambdas/scraper_ativos/handler.py /tmp/build2/;
+      cd /tmp/build2 && zip -r /tmp/lambda_dist/scraper_ativos.zip .;
+      echo 'Builds concluídos com sucesso!'"
+  
   # ============================================================================
   # 1. INFRAESTRUTURA AWS (LOCALSTACK 3.0)
   # ============================================================================
@@ -44,15 +48,15 @@ services:
       - LAMBDA_REMOTE_DOCKER=false
       - LAMBDA_REMOVE_CONTAINERS=true
       - LAMBDA_DOCKER_NETWORK=fiianalytics_network
-      - LOCALSTACK_HOST=localstack
+      - LOCALSTACK_HOST=localhost
       - SERVICES=lambda,dynamodb,events,sqs,s3
     networks:
       fiianalytics_network:
         aliases:
           - localstack
     volumes:
-      - "./localstack-init:/etc/localstack/init/ready.d"
       - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./localstack-init:/etc/localstack/init/ready.d"
       - ".:/app"
       - lambda_dist:/tmp/lambda_dist
     healthcheck:
@@ -82,11 +86,10 @@ services:
       - AWS__SecretKey=test
       - AWS_ACCESS_KEY_ID=mock_key
       - AWS_SECRET_ACCESS_KEY=mock_secret
-      - TICKERS_LIST=["MXRF11", "HGLG11", "KNRI11"]
       - TABLE_NAME=FiiAnalyticsDb
       - DYNAMODB_ENDPOINT=http://localstack:4566
       - S3_ENDPOINT=http://localstack:4566
-      
+    
     networks:
       - fiianalytics_network
     depends_on:
@@ -100,6 +103,6 @@ volumes:
 # Rede global consolidada
 networks:
   fiianalytics_network:
-#    name: fiianalytics_network
+    name: fiianalytics_network
     driver: bridge
-#    attachable: true
+    attachable: true
