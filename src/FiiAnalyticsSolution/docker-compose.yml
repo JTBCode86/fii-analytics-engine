@@ -49,6 +49,7 @@ services:
       - LAMBDA_REMOVE_CONTAINERS=true
       - LAMBDA_DOCKER_NETWORK=fiianalytics_network
       - LOCALSTACK_HOST=localhost
+      - SCRAPER_QUEUE_URL=http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/scraper-queue
       - SERVICES=lambda,dynamodb,events,sqs,s3
     networks:
       fiianalytics_network:

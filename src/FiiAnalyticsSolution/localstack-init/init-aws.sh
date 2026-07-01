@@ -6,21 +6,25 @@ ENDPOINT="http://localhost:4566"
 BUCKET_NAME="fii-carteiras-bucket"
 
 # ==============================================================================
-# 1. Criação dos recursos básicos de Infraestrutura (S3, SQS e DynamoDB)
+# 1. Criação dos recursos básicos de Infraestrutura
 # ==============================================================================
 
 echo "-> Criando Bucket S3: ${BUCKET_NAME}..."
 aws --endpoint-url=$ENDPOINT s3 mb s3://$BUCKET_NAME --region $REGION
 
-echo "-> Criando Fila SQS: fii-importacao-queue..."
+echo "-> Criando Filas SQS..."
+# Fila para importar carteiras
 aws --endpoint-url=$ENDPOINT sqs create-queue --queue-name fii-importacao-queue --region $REGION
+# Fila para o scraper (a nova fila de automação)
+SCRAPER_QUEUE_URL=$(aws --endpoint-url=$ENDPOINT sqs create-queue --queue-name scraper-queue --query 'QueueUrl' --output text --region $REGION)
 
-SQS_ARN=$(aws --endpoint-url=$ENDPOINT sqs get-queue-attributes \
+SQS_IMPORT_ARN=$(aws --endpoint-url=$ENDPOINT sqs get-queue-attributes \
     --queue-url $ENDPOINT/000000000000/fii-importacao-queue \
-    --attribute-names QueueArn \
-    --query "Attributes.QueueArn" \
-    --output text \
-    --region $REGION)
+    --attribute-names QueueArn --query "Attributes.QueueArn" --output text --region $REGION)
+
+SQS_SCRAPER_ARN=$(aws --endpoint-url=$ENDPOINT sqs get-queue-attributes \
+    --queue-url $SCRAPER_QUEUE_URL \
+    --attribute-names QueueArn --query "Attributes.QueueArn" --output text --region $REGION)
 
 echo "-> Criando Tabela DynamoDB: FiiAnalyticsDb..."
 aws --endpoint-url=$ENDPOINT dynamodb create-table \
@@ -31,71 +35,56 @@ aws --endpoint-url=$ENDPOINT dynamodb create-table \
     --region $REGION
 
 # ==============================================================================
-# 2. Coleta do Pacote Pré-Compilado (Bypass do Pip interno do LocalStack)
+# 2. Coleta e Upload dos Pacotes
 # ==============================================================================
 
-echo "-> Coletando pacote estável gerado pelo contêiner lambda-builder..."
-# Copia o zip puro do volume compartilhado para a pasta temporária local de deploy
 cp /tmp/lambda_dist/processar_carteira.zip /tmp/processar_carteira.zip
 cp /tmp/lambda_dist/scraper_ativos.zip /tmp/scraper_ativos.zip
 
-# ==============================================================================
-# 3. Upload para o S3 (Bypass do limite de 50MB) e Deploy
-# ==============================================================================
-
-echo "-> Fazendo upload dos pacotes (.zip)"
 aws --endpoint-url=$ENDPOINT s3 cp /tmp/processar_carteira.zip s3://$BUCKET_NAME/packages/processar_carteira.zip --region $REGION
+aws --endpoint-url=$ENDPOINT s3 cp /tmp/scraper_ativos.zip s3://$BUCKET_NAME/packages/scraper_ativos.zip --region $REGION
 
-echo "-> Efetuando Deploy da Lambda: processar-carteira-lambda (via S3)..."
+# ==============================================================================
+# 3. Deploy das Lambdas
+# ==============================================================================
+
+echo "-> Efetuando Deploy da Lambda: processar-carteira-lambda..."
 aws --endpoint-url=$ENDPOINT lambda create-function \
     --function-name processar-carteira-lambda \
     --runtime python3.10 \
     --role arn:aws:iam::000000000000:role/lambda-role \
     --handler handler.lambda_handler \
     --code S3Bucket=$BUCKET_NAME,S3Key=packages/processar_carteira.zip \
-    --timeout 60 \
-    --region $REGION
+    --timeout 60 --region $REGION
 
-# --- Lambda 2: scraper-ativos-lambda
-echo "-> Preparando código da Lambda: scraper-ativos-lambda..."
-aws --endpoint-url=$ENDPOINT s3 cp /tmp/scraper_ativos.zip s3://$BUCKET_NAME/packages/scraper_ativos.zip --region $REGION
-
-echo "-> Efetuando Deploy da Lambda: scraper-ativos-lambda (via S3)..."
+echo "-> Efetuando Deploy da Lambda: scraper-ativos-lambda..."
 aws --endpoint-url=$ENDPOINT lambda create-function \
     --function-name scraper-ativos-lambda \
     --runtime python3.10 \
     --role arn:aws:iam::000000000000:role/lambda-role \
     --handler handler.lambda_handler \
     --code S3Bucket=$BUCKET_NAME,S3Key=packages/scraper_ativos.zip \
-    --timeout 60 \
-    --region $REGION
+    --timeout 60 --region $REGION
     
-# Limpeza dos resíduos locais temporários
 rm -f /tmp/processar_carteira.zip /tmp/scraper_ativos.zip
 
 # ==============================================================================
-# 4. Configuração dos Mapeamentos de Gatilhos
+# 4. Configuração dos Gatilhos (Event Driven Architecture)
 # ==============================================================================
 
-echo "-> Aguardando 5 segundos para estabilização das Lambdas..."
+echo "-> Aguardando estabilização..."
 sleep 5
 
-echo "-> Configurando Gatilho SQS -> Lambda..."
+# Gatilho para importação de carteiras
 aws --endpoint-url=$ENDPOINT lambda create-event-source-mapping \
     --function-name processar-carteira-lambda \
-    --event-source-arn $SQS_ARN \
-    --batch-size 1 \
-    --region $REGION
+    --event-source-arn $SQS_IMPORT_ARN \
+    --batch-size 1 --region $REGION
 
-echo "-> Configurando Regra Agendada (Cron) para o Scraper..."
-aws --endpoint-url=$ENDPOINT events put-rule \
-    --name executar-scraper-diario \
-    --schedule-expression "rate(1 day)" \
-    --region $REGION
+# Gatilho para o Scraper (O novo elo do pipeline)
+aws --endpoint-url=$ENDPOINT lambda create-event-source-mapping \
+    --function-name scraper-ativos-lambda \
+    --event-source-arn $SQS_SCRAPER_ARN \
+    --batch-size 1 --region $REGION
 
-aws --endpoint-url=$ENDPOINT events put-targets \
-    --rule executar-scraper-diario \
-    --targets "Id"="1","Arn"="arn:aws:lambda:$REGION:000000000000:function:scraper-ativos-lambda" \
-    --region $REGION
-
-echo "########### PROVISIONAMENTO DE NUVEM LOCAL CONCLUÍDO COM SUCESSO ###########"
+echo "########### PROVISIONAMENTO CONCLUÍDO COM SUCESSO ###########"
