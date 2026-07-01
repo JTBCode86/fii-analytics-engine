@@ -96,6 +96,7 @@ O FII Analytics Engine expõe a estrutura de dados utilizada pelo sistema para i
 | `Ticker` | String | Código do fundo imobiliário |
 | `Cotacao` | Number | Último valor de cotação extraído |
 | `DividendYield` | Number | Percentual anualizado de dividendos |
+| `PVP` | Number | Índice de Preço sobre Valor Patrimonial |
 
 > **Nota:** Para visualizar o esquema completo em formato OpenAPI, você pode importar o arquivo `docs/openapi.yaml` em ferramentas como [Swagger Editor](https://editor.swagger.io/) ou [Postman](https://www.postman.com/).
 
