@@ -12,11 +12,15 @@ O sistema foi desenhado para ser desacoplado e resiliente:
 * **Pipeline:** Processamento assíncrono capaz de integrar com filas (SQS).
 
 ```mermaid
-graph LR
-    A[Trigger/Evento] --> B[AWS Lambda]
-    B --> C[StatusInvest]
-    B --> D[(Amazon DynamoDB)]
-    B --> E[Amazon SQS]
+graph TD
+    subgraph "LocalStack / Cloud AWS Simulada"
+        A[Cliente / Usuário] -->|1. Upload via API (.NET)| B(API Gateway / FiiAnalytics.API)
+        B -->|2. Salva Arquivo Bruto| C[Amazon S3]
+        C -.->|3. Evento de Criação| D[AWS Lambda / Scraper Python]
+        D -->|4. Lê Config. Ativos| E[(Amazon DynamoDB)]
+        D -->|5. Extrai Dados (StatusInvest)| F[Portal StatusInvest]
+        D -.->|6. Enfileira (Opcional)| G[Amazon SQS]
+    end
 ```
 
 ## 🛠️ Tecnologias Utilizadas
