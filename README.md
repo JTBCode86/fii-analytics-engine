@@ -32,22 +32,6 @@ graph LR
 3. ⚙️ **Processamento:** O dado é limpo, tratado e estruturado pelo motor.
 4. 💾 **Persistência:** Registro salvo no DynamoDB com o modelo de dados `PK: ATIVO#{ticker}`.
 
-## 📝 Documentação da API (Swagger/OpenAPI)
-
-O FII Analytics Engine expõe a estrutura de dados utilizada pelo sistema para integração com ferramentas externas ou consumo via client. Abaixo, a representação da entidade principal de dados (FII Metadata):
-
-### Estrutura do Recurso: `Ativo`
-
-| Campo | Tipo | Descrição |
-| :--- | :--- | :--- |
-| `PK` | String | Chave de Partição (ex: `ATIVO#HGLG11`) |
-| `SK` | String | Chave de Ordenação (ex: `METADATA`) |
-| `Ticker` | String | Código do fundo imobiliário |
-| `Cotacao` | Number | Último valor de cotação extraído |
-| `DividendYield` | Number | Percentual anualizado de dividendos |
-
-> **Nota:** Para visualizar o esquema completo em formato OpenAPI, você pode importar o arquivo `docs/openapi.yaml` em ferramentas como [Swagger Editor](https://editor.swagger.io/) ou [Postman](https://www.postman.com/).
-
 ## 🚀 Passo a Passo para Execução
 
 ### 1. Pré-requisitos
@@ -88,6 +72,36 @@ Obs: Se não tiver o awslocal, use: aws --endpoint-url=http://localhost:4566 lam
 ```bash
 aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name FiiAnalyticsDb
 ```
+
+## 🧪 Como testar a API
+Após subir a infraestrutura e iniciar sua aplicação .NET, você pode validar o fluxo de ingestão de arquivos:
+
+1. **Acesse o Swagger:** Com a API em execução, acesse `http://localhost:5000/swagger`.
+2. **Importação de Carteira:**
+   - Localize o endpoint `POST /api/v1/carteira/importar`.
+   - Clique em **Try it out**.
+   - No campo `X-Usuario-Id`, informe um ID (ex: `123456`).
+   - Faça o upload de um arquivo `.csv` de teste no campo `file`.
+   - Clique em **Execute**.
+3. **Validação:** A API retornará o status `202 Accepted` e a `s3Key` do arquivo processado.
+
+## 📝 Documentação da API (Swagger/OpenAPI)
+
+O FII Analytics Engine expõe a estrutura de dados utilizada pelo sistema para integração com ferramentas externas ou consumo via client. Abaixo, a representação da entidade principal de dados (FII Metadata):
+
+### Estrutura do Recurso: `Ativo`
+
+| Campo | Tipo | Descrição |
+| :--- | :--- | :--- |
+| `PK` | String | Chave de Partição (ex: `ATIVO#HGLG11`) |
+| `SK` | String | Chave de Ordenação (ex: `METADATA`) |
+| `Ticker` | String | Código do fundo imobiliário |
+| `Cotacao` | Number | Último valor de cotação extraído |
+| `DividendYield` | Number | Percentual anualizado de dividendos |
+
+> **Nota:** Para visualizar o esquema completo em formato OpenAPI, você pode importar o arquivo `docs/openapi.yaml` em ferramentas como [Swagger Editor](https://editor.swagger.io/) ou [Postman](https://www.postman.com/).
+
+*Após o processamento, os dados estarão disponíveis no DynamoDB sob a partição `USER#123456`.*
 
 **⚠️ Nota de Configuração:** Certifique-se de que os arquivos de script e configuração (`init-aws.sh`, `docker-compose.yml` e `Dockerfile`) estejam salvos com codificação **UTF-8** e final de linha **LF (Unix)**. Arquivos salvos com codificação Windows (CRLF) podem causar erros de sintaxe ou falhas de execução dentro dos contêineres Linux.
 
