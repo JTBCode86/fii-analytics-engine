@@ -6,10 +6,10 @@ O **FII Analytics Engine** é um sistema de engenharia de dados *serverless* pro
 ## 🏗️ Arquitetura do Projeto
 O sistema foi desenhado para ser desacoplado e resiliente:
 
-* **Ingestão:** Scripts de web scraping (Python/BeautifulSoup) via AWS Lambda.
-* **Orquestração:** Infraestrutura provisionada como código com **LocalStack**, simulando serviços AWS localmente.
-* **Armazenamento:** Persistência estruturada em **Amazon DynamoDB**, otimizado para consultas rápidas.
-* **Pipeline:** Processamento assíncrono capaz de integrar com filas (SQS).
+* **Ingestão:** API .NET que persiste arquivos no **S3**.
+* **Orquestração:** Infraestrutura como código (**LocalStack**), simulando AWS localmente.
+* **Processamento:** Funções Lambda que reagem a eventos em filas (**SQS**).
+* **Armazenamento:** Persistência estruturada em **Amazon DynamoDB**.
 
 ```mermaid
 graph TD
@@ -31,22 +31,19 @@ graph TD
 * 🐳 **Containerização:** Docker & Docker Compose.
 * 📜 **Infraestrutura:** Bash scripts (IaC) via `init-aws.sh`.
 
-## Fluxo de Dados
-1. 🎯 **Trigger:** O evento de coleta é disparado manualmente ou via regra agendada.
-2. 🤖 **Scraping:** O worker (Lambda) extrai dados brutos do portal StatusInvest.
-3. ⚙️ **Processamento:** O dado é limpo, tratado e estruturado pelo motor.
-4. 💾 **Persistência:** Registro salvo no DynamoDB com o modelo de dados `PK: ATIVO#{ticker}`.
+## Fluxo de Dados Automatizado
+1. 🎯 **Trigger:** O usuário faz o upload do arquivo CSV via API. O arquivo é armazenado no S3.
+2. ⚙️ **Processamento:** A processar-carteira-lambda é disparada automaticamente, processa o CSV, calcula o preço médio e persiste a carteira no DynamoDB.
+3. 📨 **Automação:** Para cada ativo processado, a Lambda dispara um evento na fila SQS (scraper-queue).
+4. 🤖 **Enriquecimento:** A scraper-ativos-lambda é ativada automaticamente pela fila, realiza o scraping no StatusInvest e atualiza o DynamoDB com cotação, DY e P/VP.
 
 ## 🚀 Passo a Passo para Execução
 
 ### 1. Pré-requisitos
 * ✅ **Ambiente de Container:** Docker e Docker Desktop instalados e em execução.
 * ✅ **Ferramentas de Cloud:** AWS CLI instalado e configurado.
-* ✅ **Utilitários:** `awslocal` instalado (opcional, para facilitar comandos contra o LocalStack).
-* ✅ **Desenvolvimento .NET:**
-    * **SDK:** .NET 8.0 (ou superior) instalado.
-    * **IDE:** Visual Studio 2022 ou Visual Studio Code (com a extensão *C# Dev Kit* recomendada).
-
+* ✅ **Desenvolvimento .NET:** SDK .NET 8.0+ instalado.
+    
 ### 2. Subir a Infraestrutura Local
 No terminal, na raiz do projeto, execute o comando para iniciar os containers:
 > 💻 `docker-compose up -d`
@@ -66,10 +63,6 @@ Pode validar também toda a infraestrutura AWS criada:
 ```bash
 docker exec -it fiianalytics_localstack bash -c "echo '--- S3 Buckets ---'; awslocal s3 ls; echo -e '\n--- SQS Queues ---'; awslocal sqs list-queues; echo -e '\n--- DynamoDB Tables ---'; awslocal dynamodb list-tables; echo -e '\n--- Lambda Functions ---'; awslocal lambda list-functions"
 ```
-
-### 4. Executar um Teste de Scraping
-Após o ambiente estar pronto, dispare uma invocação manual na Lambda para um ativo específico:
-Obs: Se não tiver o awslocal, use: aws --endpoint-url=http://localhost:4566 lambda invoke ...
 
 > 🧪 `awslocal lambda invoke --function-name scraper-ativos-lambda --payload '{"ticker": "HGLG11"}' response.json`
 
