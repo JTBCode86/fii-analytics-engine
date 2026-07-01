@@ -99,11 +99,4 @@ aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name FiiAnalytics
 Contribuições são bem-vindas! Sinta-se à vontade para abrir uma Issue ou enviar um Pull Request.
 ---
 *Desenvolvido com foco em arquitetura de sistemas distribuídos, processamento de dados em Python e boas práticas de desenvolvimento .NET.*
-
-
-### 2. Subir a Infraestrutura Local
-No terminal, na raiz do projeto, execute:
-> 💻 `docker-compose up -d`
-
-### 4. Executar um Teste de Scraping
-> 🧪 `awslocal lambda invoke --function-name scraper-ativos-lambda --payload '{"ticker": "HGLG11"}' response.json`
+---
