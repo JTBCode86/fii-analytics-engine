@@ -96,6 +96,7 @@ aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name FiiAnalytics
 ---
 
 ## 🤝 Contribuições
-Contribuições são bem-vindas! Sinta-se à vontade para abrir uma Issue ou enviar um Pull Request.
+Contribuições são bem-vindas! Sinta-se à vontade para abrir uma *Issue* ou enviar um *Pull Request* caso encontre melhorias, correções de bugs ou novas funcionalidades para o pipeline.
+
 ---
 *Desenvolvido com foco em arquitetura de sistemas distribuídos, processamento de dados em Python e boas práticas de desenvolvimento .NET.*
