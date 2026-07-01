@@ -66,7 +66,7 @@ docker exec -it fiianalytics_localstack bash -c "echo '--- S3 Buckets ---'; awsl
 
 > 🧪 `awslocal lambda invoke --function-name scraper-ativos-lambda --payload '{"ticker": "HGLG11"}' response.json`
 
-### 5. Validar a Persistência no DynamoDB
+### 4. Validar a Persistência no DynamoDB
 ```bash
 aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name FiiAnalyticsDb
 ```
