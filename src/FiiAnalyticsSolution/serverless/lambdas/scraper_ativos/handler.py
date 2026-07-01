@@ -30,52 +30,64 @@ def extrair_valor_por_label(soup, label_texto):
             if valor_el: return valor_el.text
     return "0.0"
 
-def lambda_handler(event, context):
-    # A estrutura 'Records' é padrão para gatilhos SQS no LocalStack
-    records = event.get("Records", [{"body": json.dumps(event)}])
+def obter_todos_tickers():
+    """Busca todos os tickers únicos presentes no DynamoDB para o scraping global."""
+    response = table.scan(ProjectionExpression="Ticker")
+    # Retorna uma lista de tickers únicos
+    return list(set(item['Ticker'] for item in response.get('Items', [])))
+
+def processar_scraping(ticker):
+    """Lógica central de extração de dados."""
+    print(f"Iniciando scraping para: {ticker}")
+    url = f"https://statusinvest.com.br/fundos-imobiliarios/{ticker.lower()}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    }
     
-    for record in records:
-        try:
-            # SQS entrega o payload dentro do campo 'body'
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        print(f"Erro {response.status_code} ao acessar {ticker}")
+        return
+
+    soup = BeautifulSoup(response.content, 'html.parser')
+    cotacao_el = soup.find('strong', {'class': 'value'})
+    cotacao_raw = cotacao_el.text if cotacao_el else "0"
+    dy_raw = extrair_valor_por_label(soup, 'Dividend Yield')
+    pvp_raw = extrair_valor_por_label(soup, 'P/VP')
+    
+    table.put_item(
+        Item={
+            "PK": f"ATIVO#{ticker.upper()}",
+            "SK": "METADATA",
+            "Ticker": ticker.upper(),
+            "Cotacao": str(formatar_valor(cotacao_raw)),
+            "DividendYield": str(formatar_valor(dy_raw)),
+            "PVP": str(formatar_valor(pvp_raw))
+        }
+    )
+    print(f"Sucesso: {ticker} atualizado.")
+
+def lambda_handler(event, context):
+    # 1. Identificar a origem do disparo
+    tickers_para_processar = []
+
+    # Gatilho SQS (via upload de carteira)
+    if "Records" in event:
+        for record in event["Records"]:
             body = json.loads(record.get("body", "{}"))
             ticker = body.get("ticker")
-            if not ticker: 
-                print("Ticker não encontrado no payload.")
-                continue
-                
-            print(f"Iniciando scraping (via SQS/Trigger) para: {ticker}")
+            if ticker: tickers_para_processar.append(ticker)
             
-            url = f"https://statusinvest.com.br/fundos-imobiliarios/{ticker.lower()}"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-            }
-            
-            response = requests.get(url, headers=headers)
-            if response.status_code != 200:
-                print(f"Erro {response.status_code} ao acessar {ticker}")
-                continue
-                
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Extração dos dados
-            cotacao_el = soup.find('strong', {'class': 'value'})
-            cotacao_raw = cotacao_el.text if cotacao_el else "0"
-            dy_raw = extrair_valor_por_label(soup, 'Dividend Yield')
-            pvp_raw = extrair_valor_por_label(soup, 'P/VP')
-            
-            table.put_item(
-                Item={
-                    "PK": f"ATIVO#{ticker.upper()}",
-                    "SK": "METADATA",
-                    "Ticker": ticker.upper(),
-                    "Cotacao": str(formatar_valor(cotacao_raw)),
-                    "DividendYield": str(formatar_valor(dy_raw)),
-                    "PVP": str(formatar_valor(pvp_raw))
-                }
-            )
-            print(f"Sucesso: {ticker} atualizado no DynamoDB.")
+    # Gatilho EventBridge (Agendamento Automático)
+    else:
+        print("Disparo via EventBridge detectado. Iniciando varredura global...")
+        tickers_para_processar = obter_todos_tickers()
 
+    # 2. Executar processamento
+    for ticker in tickers_para_processar:
+        try:
+            processar_scraping(ticker)
         except Exception as e:
             print(f"Erro no processamento do ticker {ticker}: {str(e)}")
             
-    return {"statusCode": 200, "body": json.dumps("Processamento concluído.")}
+    return {"statusCode": 200, "body": json.dumps(f"Processados {len(tickers_para_processar)} ativos.")}

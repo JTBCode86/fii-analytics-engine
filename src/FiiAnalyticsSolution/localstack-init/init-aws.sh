@@ -75,16 +75,40 @@ rm -f /tmp/processar_carteira.zip /tmp/scraper_ativos.zip
 echo "-> Aguardando estabilização..."
 sleep 5
 
-# Gatilho para importação de carteiras
+# Gatilho para importação de carteiras (SQS)
 aws --endpoint-url=$ENDPOINT lambda create-event-source-mapping \
     --function-name processar-carteira-lambda \
     --event-source-arn $SQS_IMPORT_ARN \
     --batch-size 1 --region $REGION
 
-# Gatilho para o Scraper (O novo elo do pipeline)
+# Gatilho para o Scraper via SQS (Pipeline de Upload)
 aws --endpoint-url=$ENDPOINT lambda create-event-source-mapping \
     --function-name scraper-ativos-lambda \
     --event-source-arn $SQS_SCRAPER_ARN \
     --batch-size 1 --region $REGION
+
+# 5. Configuração do EventBridge (Automação Temporal)
+echo "-> Criando regra de agendamento no EventBridge..."
+aws --endpoint-url=$ENDPOINT events put-rule \
+    --name "AtualizacaoDiariaFIIs" \
+    --schedule-expression "rate(24 hours)" \
+    --state "ENABLED" \
+    --region $REGION
+
+# Vincula a Lambda como alvo da regra
+LAMBDA_ARN="arn:aws:lambda:$REGION:000000000000:function:scraper-ativos-lambda"
+aws --endpoint-url=$ENDPOINT events put-targets \
+    --rule "AtualizacaoDiariaFIIs" \
+    --targets "[{\"Id\": \"Target1\", \"Arn\": \"$LAMBDA_ARN\"}]" \
+    --region $REGION
+
+# Permissão para o EventBridge invocar a Lambda
+aws --endpoint-url=$ENDPOINT lambda add-permission \
+    --function-name scraper-ativos-lambda \
+    --statement-id "EventBridgeInvoke" \
+    --action "lambda:InvokeFunction" \
+    --principal "events.amazonaws.com" \
+    --source-arn "arn:aws:events:$REGION:000000000000:rule/AtualizacaoDiariaFIIs" \
+    --region $REGION
 
 echo "########### PROVISIONAMENTO CONCLUÍDO COM SUCESSO ###########"
