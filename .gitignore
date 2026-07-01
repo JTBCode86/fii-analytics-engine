@@ -41,3 +41,9 @@ Thumbs.db
 # --- Documentação do Projeto ---
 # Se for gerar documentos locais
 /docs/
+
+#text
+*.txt
+*.csv
+*.xlsx
+*.xls
