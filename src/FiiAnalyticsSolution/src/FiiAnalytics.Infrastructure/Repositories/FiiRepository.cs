@@ -10,10 +10,7 @@ public class FiiRepository : IFiiRepository
     private readonly IAmazonDynamoDB _dynamoDb;
     private const string TableName = "FiiAnalyticsDb";
 
-    public FiiRepository(IAmazonDynamoDB dynamoDb)
-    {
-        _dynamoDb = dynamoDb;
-    }
+    public FiiRepository(IAmazonDynamoDB dynamoDb) => _dynamoDb = dynamoDb;
 
     public async Task<Fii?> ObterPorTickerAsync(string ticker)
     {
@@ -30,46 +27,79 @@ public class FiiRepository : IFiiRepository
         var response = await _dynamoDb.GetItemAsync(request);
         if (response.Item == null || response.Item.Count == 0) return null;
 
-        return new Fii(
-            ticker: response.Item["PK"].S.Replace("FII#", ""),
-            nome: response.Item["Nome"].S,
-            precoAtual: decimal.Parse(response.Item["PrecoAtual"].N),
-            valorPatrimonialPorCota: decimal.Parse(response.Item["ValorPatrimonialPorCota"].N),
-            dividendoAcumulado12M: decimal.Parse(response.Item["DividendoAcumulado12M"].N)
-        );
+        return MapearFii(response.Item);
     }
 
-    public async Task<Dictionary<string, Fii>> ObterTodosFiisAsync()
+    public async Task<(List<Carteira> Carteira, List<Fii> Metadados)> ObterCarteiraComMetadadosAsync(string usuarioId)
     {
-        // Nota: Scan deve ser usado com cautela em produção, mas serve perfeitamente para buscar a carga de FIIs locais
-        var request = new ScanRequest
+        // 1. Busca Carteira com acesso seguro aos dados
+        var queryRequest = new QueryRequest
         {
             TableName = TableName,
-            FilterExpression = "begins_with(PK, :fiiPrefix) AND SK = :skValue",
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-            {
-                { ":fiiPrefix", new AttributeValue { S = "FII#" } },
-                { ":skValue", new AttributeValue { S = "METRICAS" } }
-            }
+            KeyConditionExpression = "PK = :v_pk",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue> { { ":v_pk", new AttributeValue { S = $"USER#{usuarioId}" } } }
         };
 
-        var response = await _dynamoDb.ScanAsync(request);
-        var dicionario = new Dictionary<string, Fii>();
+        var response = await _dynamoDb.QueryAsync(queryRequest);
 
+        var listaCarteira = new List<Carteira>();
         foreach (var item in response.Items)
         {
-            var ticker = item["PK"].S.Replace("FII#", "");
-            var fii = new Fii(
-                ticker: ticker,
-                nome: item["Nome"].S,
-                precoAtual: decimal.Parse(item["PrecoAtual"].N),
-                valorPatrimonialPorCota: decimal.Parse(item["ValorPatrimonialPorCota"].N),
-                dividendoAcumulado12M: decimal.Parse(item["DividendoAcumulado12M"].N)
-            );
-            dicionario.Add(ticker, fii);
+            listaCarteira.Add(new Carteira
+            {
+                Ticker = item.TryGetValue("Ticker", out var t) ? (t.S ?? "") : "",
+                Quantidade = item.TryGetValue("Quantidade", out var q) ? int.Parse(q.N ?? "0") : 0,
+                PrecoMedio = item.TryGetValue("PrecoMedio", out var p) ? decimal.Parse(p.N ?? "0") : 0
+            });
         }
 
-        return dicionario;
+        // 2. Busca Metadados
+        var listaMetadados = new List<Fii>();
+        if (listaCarteira.Any())
+        {
+            var batchRequest = new BatchGetItemRequest
+            {
+                RequestItems = new Dictionary<string, KeysAndAttributes> {
+                { TableName, new KeysAndAttributes {
+                    Keys = listaCarteira.Select(c => new Dictionary<string, AttributeValue> {
+                        { "PK", new AttributeValue { S = $"ATIVO#{c.Ticker.ToUpper()}" } },
+                        { "SK", new AttributeValue { S = "METADATA" } }
+                    }).ToList()
+                }}
+            }
+            };
+
+            var batchResponse = await _dynamoDb.BatchGetItemAsync(batchRequest);
+
+            // Verifica se a tabela existe na resposta e se contém itens
+            if (batchResponse.Responses != null && batchResponse.Responses.TryGetValue(TableName, out var items))
+            {
+                listaMetadados = items.Select(MapearFii).ToList();
+            }
+        }
+
+        return (listaCarteira, listaMetadados);
+    }
+
+    private static Fii MapearFii(Dictionary<string, AttributeValue> item)
+    {
+        string GetValue(string key) 
+        {
+            if (item.TryGetValue(key, out var val) && val.S != null) return val.S;
+            if (item.TryGetValue(key, out var valN) && valN.N != null) return valN.N;
+            return "0";
+        }
+
+        return new Fii
+        {
+            // Se a PK existir, remove o prefixo, senão retorna vazio
+            Ticker = item.TryGetValue("PK", out var pk) ? pk.S.Replace("ATIVO#", "") : string.Empty,
+
+            // Usamos decimal.Parse sobre a string obtida com segurança
+            Cotacao = decimal.TryParse(GetValue("Cotacao"), out var c) ? c : 0,
+            DividendYield = decimal.TryParse(GetValue("DividendYield"), out var dy) ? dy : 0,
+            PVP = decimal.TryParse(GetValue("PVP"), out var pvp) ? pvp : 0
+        };
     }
 
     public async Task SalvarFiiAsync(Fii fii)
@@ -79,12 +109,12 @@ public class FiiRepository : IFiiRepository
             TableName = TableName,
             Item = new Dictionary<string, AttributeValue>
             {
-                { "PK", new AttributeValue { S = $"FII#{fii.Ticker}" } },
+                { "PK", new AttributeValue { S = $"FII#{fii.Ticker.ToUpper()}" } },
                 { "SK", new AttributeValue { S = "METRICAS" } },
-                { "Nome", new AttributeValue { S = fii.Nome } },
-                { "PrecoAtual", new AttributeValue { N = fii.PrecoAtual.ToString() } },
-                { "ValorPatrimonialPorCota", new AttributeValue { N = fii.ValorPatrimonialPorCota.ToString() } },
-                { "DividendoAcumulado12M", new AttributeValue { N = fii.DividendoAcumulado12M.ToString() } }
+                { "Ticker", new AttributeValue { S = fii.Ticker } },
+                { "Cotacao", new AttributeValue { N = fii.Cotacao.ToString() } },
+                { "DividendYield", new AttributeValue { N = fii.DividendYield.ToString() } },
+                { "PVP", new AttributeValue { N = fii.PVP.ToString() } }
             }
         };
 

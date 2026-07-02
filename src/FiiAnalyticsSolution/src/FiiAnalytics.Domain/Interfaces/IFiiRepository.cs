@@ -5,6 +5,8 @@ namespace FiiAnalytics.Domain.Interfaces;
 public interface IFiiRepository
 {
     Task<Fii?> ObterPorTickerAsync(string ticker);
-    Task<Dictionary<string, Fii>> ObterTodosFiisAsync();
+   
     Task SalvarFiiAsync(Fii fii);
+
+    Task<(List<Carteira> Carteira, List<Fii> Metadados)> ObterCarteiraComMetadadosAsync(string usuarioId);
 }
