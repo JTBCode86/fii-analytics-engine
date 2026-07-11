@@ -11,13 +11,16 @@ public class CarteiraController : ControllerBase
 {
     private readonly ImportarCarteiraUseCase _importarCarteiraUseCase;
     private readonly GetRentabilidadeCarteiraHandler _rentabilidadeHandler;
+    private readonly GetAtivoConsolidadoHandler _ativoConsolidadoHandler;
 
     public CarteiraController(
         ImportarCarteiraUseCase importarCarteiraUseCase,
-        GetRentabilidadeCarteiraHandler rentabilidadeHandler)
+        GetRentabilidadeCarteiraHandler rentabilidadeHandler,
+        GetAtivoConsolidadoHandler ativoConsolidadoHandler)
     {
         _importarCarteiraUseCase = importarCarteiraUseCase;
         _rentabilidadeHandler = rentabilidadeHandler;
+        _ativoConsolidadoHandler = ativoConsolidadoHandler;
     }
 
     [HttpPost("importar")]
@@ -61,5 +64,19 @@ public class CarteiraController : ControllerBase
         {
             return StatusCode(500, new { message = "Erro ao processar análise da carteira.", detail = ex.Message });
         }
+    }
+
+    [HttpGet("ativo/{ticker}")]
+    [ProducesResponseType(typeof(FundoResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAtivoConsolidado(string ticker)
+    {
+        // A query espera apenas o Ticker, pois o usuário está fixo no Handler por enquanto
+        var query = new GetAtivoConsolidadoQuery(ticker);
+        var resultado = await _ativoConsolidadoHandler.Handle(query, CancellationToken.None);
+
+        if (resultado == null)
+            return NotFound(new { message = $"Ativo {ticker} não encontrado." });
+
+        return Ok(resultado);
     }
 }

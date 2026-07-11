@@ -27,6 +27,7 @@ builder.Services.AddScoped<IFiiRepository, FiiRepository>();
 // 4. Registro da camada de Aplicação (UseCases e Queries)
 builder.Services.AddScoped<ImportarCarteiraUseCase>();
 builder.Services.AddScoped<GetRentabilidadeCarteiraHandler>();
+builder.Services.AddScoped<GetAtivoConsolidadoHandler>();
 
 // 5. Configuração da API
 builder.Services.AddControllers();

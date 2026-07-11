@@ -120,4 +120,24 @@ public class FiiRepository : IFiiRepository
 
         await _dynamoDb.PutItemAsync(request);
     }
+
+    public async Task<dynamic> GetAsync(string pk, string sk)
+    {
+        var request = new GetItemRequest
+        {
+            TableName = TableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                { "PK", new AttributeValue { S = pk } },
+                { "SK", new AttributeValue { S = sk } }
+            }
+        };
+
+        var response = await _dynamoDb.GetItemAsync(request);
+
+        // Retorna o dicionário bruto. 
+        // O seu Handler fará o cast para Dictionary<string, AttributeValue>
+        return response.Item;
+    }
+
 }
