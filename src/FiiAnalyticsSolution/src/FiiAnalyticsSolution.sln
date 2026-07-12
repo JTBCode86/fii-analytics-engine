@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiiAnalytics.Infrastructure
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiiAnalytics.API", "FiiAnalytics.API\FiiAnalytics.API.csproj", "{D4418E2A-C27A-8291-1173-45BC8D6723D5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiiAnalytics.Tests", "tests\FiiAnalytics.Tests\FiiAnalytics.Tests.csproj", "{CACB728C-1C81-4415-AC98-20A78E94159C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{D4418E2A-C27A-8291-1173-45BC8D6723D5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D4418E2A-C27A-8291-1173-45BC8D6723D5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D4418E2A-C27A-8291-1173-45BC8D6723D5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CACB728C-1C81-4415-AC98-20A78E94159C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CACB728C-1C81-4415-AC98-20A78E94159C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CACB728C-1C81-4415-AC98-20A78E94159C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CACB728C-1C81-4415-AC98-20A78E94159C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

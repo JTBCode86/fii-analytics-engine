@@ -2,6 +2,7 @@
 using Amazon.DynamoDBv2.Model;
 using FiiAnalytics.Domain.Entities;
 using FiiAnalytics.Domain.Interfaces;
+using System.Globalization;
 
 namespace FiiAnalytics.Infrastructure.Repositories;
 
@@ -49,7 +50,8 @@ public class FiiRepository : IFiiRepository
             {
                 Ticker = item.TryGetValue("Ticker", out var t) ? (t.S ?? "") : "",
                 Quantidade = item.TryGetValue("Quantidade", out var q) ? int.Parse(q.N ?? "0") : 0,
-                PrecoMedio = item.TryGetValue("PrecoMedio", out var p) ? decimal.Parse(p.N ?? "0") : 0
+                //PrecoMedio = item.TryGetValue("PrecoMedio", out var p) ? decimal.Parse(p.N ?? "0") : 0
+                PrecoMedio = item.TryGetValue("PrecoMedio", out var p) ? decimal.Parse(p.N ?? "0", CultureInfo.InvariantCulture) : 0
             });
         }
 
@@ -96,9 +98,13 @@ public class FiiRepository : IFiiRepository
             Ticker = item.TryGetValue("PK", out var pk) ? pk.S.Replace("ATIVO#", "") : string.Empty,
 
             // Usamos decimal.Parse sobre a string obtida com segurança
-            Cotacao = decimal.TryParse(GetValue("Cotacao"), out var c) ? c : 0,
-            DividendYield = decimal.TryParse(GetValue("DividendYield"), out var dy) ? dy : 0,
-            PVP = decimal.TryParse(GetValue("PVP"), out var pvp) ? pvp : 0
+            //Cotacao = decimal.TryParse(GetValue("Cotacao"), out var c) ? c : 0,
+            //DividendYield = decimal.TryParse(GetValue("DividendYield"), out var dy) ? dy : 0,
+            //PVP = decimal.TryParse(GetValue("PVP"), out var pvp) ? pvp : 0
+
+            Cotacao = decimal.TryParse(GetValue("Cotacao"), NumberStyles.Any, CultureInfo.InvariantCulture, out var c) ? c : 0,
+            DividendYield = decimal.TryParse(GetValue("DividendYield"), NumberStyles.Any, CultureInfo.InvariantCulture, out var dy) ? dy : 0,
+            PVP = decimal.TryParse(GetValue("PVP"), NumberStyles.Any, CultureInfo.InvariantCulture, out var pvp) ? pvp : 0
         };
     }
 

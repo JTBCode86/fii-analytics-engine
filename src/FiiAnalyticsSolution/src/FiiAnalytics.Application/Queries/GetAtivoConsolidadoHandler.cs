@@ -40,24 +40,32 @@ namespace FiiAnalytics.Application.Queries
 
         private decimal ExtrairDecimal(Dictionary<string, AttributeValue>? item, string key)
         {
-            //if (item == null) return -999; // Dicionário nulo
-            //if (!item.TryGetValue(key, out var val)) return -888; // Chave não existe
-            //if (decimal.TryParse(val.N, out var result)) return result;
-            //return -777; // Existe, mas não é número (ou está em .S)
-
+            // 1. Verifica existência da chave
             if (item == null || !item.TryGetValue(key, out var val))
-                return 0; // Chave não existe
+                return 0;
 
-            // Tenta ler como Number (.N)
-            if (val.N != null && decimal.TryParse(val.N, out var resultN))
-                return resultN;
+            // 2. Tenta processar o tipo 'N' (Number) - Preferencial no DynamoDB
+            if (!string.IsNullOrEmpty(val.N))
+            {
+                if (decimal.TryParse(val.N, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var resultN))
+                {
+                    return resultN;
+                }
+            }
 
-            // Tenta ler como String (.S)
-            if (val.S != null && decimal.TryParse(val.S, out var resultS))
-                return resultS;
+            // 3. Tenta processar o tipo 'S' (String), caso o número esteja guardado como texto
+            if (!string.IsNullOrEmpty(val.S))
+            {
+                if (decimal.TryParse(val.S, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var resultS))
+                {
+                    return resultS;
+                }
+            }
 
-            return 0; // Não conseguiu converter nem como N nem como S
-
+            // Retorna 0 caso não seja um formato numérico válido
+            return 0;
         }   
 
     }

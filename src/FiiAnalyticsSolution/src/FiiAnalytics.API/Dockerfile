@@ -1,21 +1,22 @@
-# Estágio de Build
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /app
 
-# 1. Copiar os arquivos .csproj mantendo a estrutura exata de pastas
-COPY src/FiiAnalytics.Domain/FiiAnalytics.Domain.csproj ./src/FiiAnalytics.Domain/
-COPY src/FiiAnalytics.Application/FiiAnalytics.Application.csproj ./src/FiiAnalytics.Application/
-COPY src/FiiAnalytics.Infrastructure/FiiAnalytics.Infrastructure.csproj ./src/FiiAnalytics.Infrastructure/
-COPY src/FiiAnalytics.API/FiiAnalytics.API.csproj ./src/FiiAnalytics.API/
+# 1. Copia os arquivos de solução e projeto
+COPY **/*.sln ./
+COPY src/FiiAnalytics.Domain/ ./FiiAnalytics.Domain/
+COPY src/FiiAnalytics.Application/ ./FiiAnalytics.Application/
+COPY src/FiiAnalytics.Infrastructure/ ./FiiAnalytics.Infrastructure/
+COPY src/FiiAnalytics.API/ ./FiiAnalytics.API/
+COPY src/tests/FiiAnalytics.Tests/ ./tests/FiiAnalytics.Tests/
 
-# 2. Executar o restore a partir da raiz (/app), mantendo a resolução do ".." correta
-RUN dotnet restore ./src/FiiAnalytics.API/FiiAnalytics.API.csproj
+# 2. Agora o restore vai encontrar tudo
+RUN dotnet restore 
 
-# 3. Copiar todo o resto do código do monorepo
+# 3. Copia o restante do código
 COPY . .
 
-# 4. Compilar e publicar os binários apontando para a API
-RUN dotnet publish ./src/FiiAnalytics.API/FiiAnalytics.API.csproj -c Release -o /out
+# 4. Publica
+RUN dotnet publish FiiAnalytics.API/FiiAnalytics.API.csproj -c Release -o /out --no-restore
 
 # Estágio de Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
