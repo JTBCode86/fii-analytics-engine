@@ -1,5 +1,7 @@
 # FII Analytics Engine
 
+![Build Status](https://github.com/seu-usuario/seu-repositorio/actions/workflows/main.yml/badge.svg)
+
 ## Descrição
 O **FII Analytics Engine** é um sistema de engenharia de dados *serverless* projetado para automação, extração e análise de indicadores financeiros de Fundos de Imobiliários (FIIs). O projeto centraliza a coleta de dados de mercado, processamento e persistência, utilizando uma arquitetura moderna baseada em eventos e escalabilidade em nuvem.
 
@@ -32,6 +34,14 @@ graph TD
 * 🐳 **Containerização:** Docker & Docker Compose.
 * 📜 **Infraestrutura:** Bash scripts (IaC) via `init-aws.sh`.
 
+### 📂 Estrutura do Repositório
+Para facilitar a navegação pelo projeto, esta é a organização da nossa árvore de diretórios:
+
+* `/src/FiiAnalytics.API/`: Código-fonte da API desenvolvida em .NET.
+* `/src/FiiAnalytics.Tests/`: Projetos de testes (unitários isolados e testes de integração com Testcontainers).
+* `/infra/`: Scripts de infraestrutura como código (ex: `init-aws.sh` para LocalStack).
+* `/docs/`: Arquivos de documentação técnica, diagramas e especificações OpenAPI.
+
 ## Fluxo de Dados Automatizado
 1. 🎯 **Gatilho Reativo (Upload):** O usuário faz o upload da carteira via API. O arquivo vai para o S3 e o pipeline processa o CSV, calculando preço médio e alocação.
 2. ⏱️ **Manutenção de Mercado (EventBridge):** Periodicamente, o EventBridge dispara a scraper-ativos-lambda para varrer todos os ativos cadastrados no DynamoDB, garantindo que indicadores (P/VP, DY) reflitam o mercado atual.
@@ -42,7 +52,7 @@ graph TD
 ### 1. Pré-requisitos
 * ✅ **Ambiente de Container:** Docker e Docker Desktop instalados e em execução.
 * ✅ **Ferramentas de Cloud:** AWS CLI instalado e configurado.
-* ✅ **Desenvolvimento .NET:** SDK .NET 8.0+ instalado.
+* ✅ **Desenvolvimento .NET:** SDK .NET 9.0+ instalado.
     
 ### 2. Subir a Infraestrutura Local
 No terminal, na raiz do projeto, execute o comando para iniciar os containers:
@@ -70,6 +80,32 @@ docker exec -it fiianalytics_localstack bash -c "echo '--- S3 Buckets ---'; awsl
 ```bash
 aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name FiiAnalyticsDb
 ```
+
+### 🧪 Execução de Testes
+O projeto conta com uma suíte de testes robusta que utiliza **Testcontainers** e **LocalStack** para garantir que a integração com os serviços AWS funcione conforme o esperado.
+
+**Pré-requisitos para rodar os testes:**
+* Certifique-se de que o **Docker Desktop** esteja em execução.
+
+#### 1. Testes Unitários (Rápidos)
+Para rodar apenas os testes que não dependem de infraestrutura externa:
+
+```bash
+dotnet test --filter Category!=Integration
+```
+#### 2. Testes de Integração (Com Dependências AWS)
+Para executar a suíte completa de testes (incluindo aqueles que utilizam Testcontainers/LocalStack):
+```bash
+dotnet test
+```
+*Nota: A primeira execução dos testes de integração pode demorar um pouco mais, pois o Testcontainers precisa fazer o pull das imagens necessárias e configurar o ambiente LocalStack em containers efêmeros.*
+
+### 💡 Dica de Troubleshooting para Testes
+Se o comando `dotnet test` falhar durante a execução dos testes de integração, verifique os pontos abaixo:
+
+* **Docker Socket:** Certifique-se de que o **Docker Desktop** ou o serviço do Docker esteja rodando e que seu usuário tenha permissões de acesso ao *socket* do Docker.
+* **Recursos de Sistema:** Como utilizamos **Testcontainers**, garanta que sua máquina tenha memória disponível suficiente para subir os containers do LocalStack.
+* **Permissões:** Em ambientes Linux/WSL, verifique se o seu usuário está no grupo `docker`.
 
 ## 🧪 Como testar a API
 Após subir a infraestrutura e iniciar sua aplicação .NET, você pode validar o fluxo de ingestão de arquivos:
