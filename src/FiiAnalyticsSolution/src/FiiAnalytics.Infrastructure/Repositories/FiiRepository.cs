@@ -46,12 +46,18 @@ public class FiiRepository : IFiiRepository
         var listaCarteira = new List<Carteira>();
         foreach (var item in response.Items)
         {
+            // Tenta obter como String (S) ou Number (N)
+            string precoStr = item.TryGetValue("PrecoMedio", out var p) 
+                ? (p.S ?? p.N ?? "0") 
+                : "0";
+
             listaCarteira.Add(new Carteira
             {
                 Ticker = item.TryGetValue("Ticker", out var t) ? (t.S ?? "") : "",
                 Quantidade = item.TryGetValue("Quantidade", out var q) ? int.Parse(q.N ?? "0") : 0,
-                //PrecoMedio = item.TryGetValue("PrecoMedio", out var p) ? decimal.Parse(p.N ?? "0") : 0
-                PrecoMedio = item.TryGetValue("PrecoMedio", out var p) ? decimal.Parse(p.N ?? "0", CultureInfo.InvariantCulture) : 0
+                PrecoMedio = decimal.TryParse(precoStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedPreco) 
+                ? parsedPreco
+                : 0
             });
         }
 
@@ -96,12 +102,6 @@ public class FiiRepository : IFiiRepository
         {
             // Se a PK existir, remove o prefixo, senão retorna vazio
             Ticker = item.TryGetValue("PK", out var pk) ? pk.S.Replace("ATIVO#", "") : string.Empty,
-
-            // Usamos decimal.Parse sobre a string obtida com segurança
-            //Cotacao = decimal.TryParse(GetValue("Cotacao"), out var c) ? c : 0,
-            //DividendYield = decimal.TryParse(GetValue("DividendYield"), out var dy) ? dy : 0,
-            //PVP = decimal.TryParse(GetValue("PVP"), out var pvp) ? pvp : 0
-
             Cotacao = decimal.TryParse(GetValue("Cotacao"), NumberStyles.Any, CultureInfo.InvariantCulture, out var c) ? c : 0,
             DividendYield = decimal.TryParse(GetValue("DividendYield"), NumberStyles.Any, CultureInfo.InvariantCulture, out var dy) ? dy : 0,
             PVP = decimal.TryParse(GetValue("PVP"), NumberStyles.Any, CultureInfo.InvariantCulture, out var pvp) ? pvp : 0
@@ -141,8 +141,7 @@ public class FiiRepository : IFiiRepository
 
         var response = await _dynamoDb.GetItemAsync(request);
 
-        // Retorna o dicionário bruto. 
-        // O seu Handler fará o cast para Dictionary<string, AttributeValue>
+        // Retorna o dicionário bruto.
         return response.Item;
     }
 

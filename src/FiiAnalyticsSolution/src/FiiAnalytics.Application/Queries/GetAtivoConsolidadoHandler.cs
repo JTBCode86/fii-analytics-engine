@@ -66,7 +66,6 @@ namespace FiiAnalytics.Application.Queries
 
             // Retorna 0 caso não seja um formato numérico válido
             return 0;
-        }   
-
+        }
     }
 }
