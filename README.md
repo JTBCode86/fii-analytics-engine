@@ -1,6 +1,6 @@
 # FII Analytics Engine
 
-![Build Status](https://github.com/seu-usuario/seu-repositorio/actions/workflows/main.yml/badge.svg)
+![Build Status](https://github.com/JTBCode86/fii-analytics-engine/actions/workflows/main.yml/badge.svg)
 
 ## Descrição
 O **FII Analytics Engine** é um sistema de engenharia de dados *serverless* projetado para automação, extração e análise de indicadores financeiros de Fundos de Imobiliários (FIIs). O projeto centraliza a coleta de dados de mercado, processamento e persistência, utilizando uma arquitetura moderna baseada em eventos e escalabilidade em nuvem.
