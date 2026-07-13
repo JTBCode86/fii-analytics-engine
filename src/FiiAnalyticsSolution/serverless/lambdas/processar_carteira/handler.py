@@ -47,7 +47,8 @@ def lambda_handler(event, context):
             # 3. Consolidação
             carteira_consolidada = df.groupby('Ticker').agg(
                 QuantidadeTotal=('Quantidade', 'sum'),
-                CustoTotalAcumulado=('CustoTotal', 'sum')
+                CustoTotalAcumulado=('CustoTotal', 'sum'),
+                TotalProventosAcumulado=('TotalProventos', 'sum')
             ).reset_index()
             
             carteira_consolidada['PrecoMedioCalculado'] = carteira_consolidada['CustoTotalAcumulado'] / carteira_consolidada['QuantidadeTotal']
@@ -58,6 +59,7 @@ def lambda_handler(event, context):
                     ticker = row['Ticker']
                     quantidade = int(row['QuantidadeTotal'])
                     preco_medio = float(round(row['PrecoMedioCalculado'], 2))
+                    total_proventos = float(round(row['TotalProventosAcumulado'], 2))
                     
                     batch.put_item(
                         Item={
@@ -65,7 +67,8 @@ def lambda_handler(event, context):
                             "SK": f"CARTEIRA#{ticker}",
                             "Ticker": ticker,
                             "Quantidade": quantidade,
-                            "PrecoMedio": str(preco_medio)
+                            "PrecoMedio": str(preco_medio),
+                            "TotalProventos": str(total_proventos)
                         }
                     )
                     
