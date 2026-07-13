@@ -19,6 +19,11 @@ namespace FiiAnalytics.Application.Queries
             var ticker = request.Ticker.ToUpper();
             var usuarioId = request.UsuarioId.StartsWith("USER#") ? request.UsuarioId : $"USER#{request.UsuarioId}";
 
+            if (!await _repo.UsuarioExisteAsync(usuarioId))
+            {
+                throw new KeyNotFoundException($"Usuário {request.UsuarioId} não encontrado na base de dados.");
+            }
+
             var taskMercado = _repo.GetAsync($"ATIVO#{ticker}", "METADATA");
             var taskCarteira = _repo.GetAsync(usuarioId, $"CARTEIRA#{ticker}");
 
