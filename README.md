@@ -1,7 +1,9 @@
 # FII Analytics Engine
 
 ## Descrição
-O **FII Analytics Engine** é um sistema de engenharia de dados *serverless* projetado para automação, extração e análise de indicadores financeiros de Fundos de Imobiliários (FIIs). O projeto centraliza a coleta de dados de mercado, processamento e persistência, utilizando uma arquitetura moderna baseada em eventos e escalabilidade em nuvem.
+O **FII Analytics Engine** é um sistema de engenharia de dados serverless projetado para automação, extração e análise de indicadores financeiros de Fundos de Imobiliários (FIIs). O projeto centraliza a coleta de dados de mercado, processamento e persistência, utilizando uma arquitetura moderna baseada em eventos e escalabilidade em nuvem.
+
+Status: 20 testes (unitários e integração) validados e passando com 100% de sucesso.
 
 ## 🏗️ Arquitetura do Projeto
 O sistema foi desenhado para ser desacoplado e resiliente:
@@ -36,6 +38,7 @@ graph TD
 Para facilitar a navegação pelo projeto, esta é a organização da nossa árvore de diretórios:
 
 * `/src/FiiAnalytics.API/`: Código-fonte da API desenvolvida em .NET.
+* `/src/FiiAnalytics.Application/DTOs/Common/Serialization/`: Conversores e atributos personalizados para padronização de serialização JSON.
 * `/src/FiiAnalytics.Tests/`: Projetos de testes (unitários isolados e testes de integração com Testcontainers).
 * `/infra/`: Scripts de infraestrutura como código (ex: `init-aws.sh` para LocalStack).
 * `/docs/`: Arquivos de documentação técnica, diagramas e especificações OpenAPI.
@@ -119,18 +122,16 @@ Após subir a infraestrutura e iniciar sua aplicação .NET, você pode validar 
 
 ## 📝 Documentação da API (Swagger/OpenAPI)
 
-O FII Analytics Engine expõe a estrutura de dados utilizada pelo sistema para integração com ferramentas externas ou consumo via client. Abaixo, a representação da entidade principal de dados (FII Metadata):
+O FII Analytics Engine expõe contratos de API padronizados. A camada de serialização (JsonDecimalFormat) garante a consistência técnica: valores monetários decimais são formatados com 2 casas decimais (F2), enquanto indicadores de rentabilidade/performance seguem o padrão de 4 casas decimais, assegurando precisão na entrega dos dados.
 
 ### Estrutura do Recurso: `Ativo`
 
 | Campo | Tipo | Descrição |
 | :--- | :--- | :--- |
-| `PK` | String | Chave de Partição (ex: `ATIVO#HGLG11`) |
-| `SK` | String | Chave de Ordenação (ex: `METADATA`) |
 | `Ticker` | String | Código do fundo imobiliário |
-| `Cotacao` | Number | Último valor de cotação extraído |
-| `DividendYield` | Number | Percentual anualizado de dividendos |
-| `PVP` | Number | Índice de Preço sobre Valor Patrimonial |
+| `CotacaoAtual` | Number | Última cotação de mercado (F2) |
+| `PrecoMedio` | Number |Preço médio do ativo em carteira (F2) |
+| `Performance` | Number | Variação percentual de performance (F4) |
 
 > **Nota:** Para visualizar o esquema completo em formato OpenAPI, você pode importar o arquivo `docs/openapi.yaml` em ferramentas como [Swagger Editor](https://editor.swagger.io/) ou [Postman](https://www.postman.com/).
 
