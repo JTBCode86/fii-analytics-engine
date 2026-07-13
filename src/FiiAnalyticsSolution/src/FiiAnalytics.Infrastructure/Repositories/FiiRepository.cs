@@ -150,4 +150,25 @@ public class FiiRepository : IFiiRepository
         return response.Item;
     }
 
+    public async Task<bool> UsuarioExisteAsync(string usuarioId)
+    {
+        var queryRequest = new QueryRequest
+        {
+            TableName = TableName,
+            KeyConditionExpression = "PK = :v_pk",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+        {
+            { ":v_pk", new AttributeValue { S = usuarioId } }
+        },
+            Limit = 1
+        };
+
+        var response = await _dynamoDb.QueryAsync(queryRequest);
+
+        // LOG DE DEBUG: Imprima o número de itens encontrados
+        Console.WriteLine($"DEBUG: Busca por {usuarioId} retornou {response.Items.Count} itens.");
+
+        return response.Items != null && response.Items.Count > 0;
+    }
+
 }
