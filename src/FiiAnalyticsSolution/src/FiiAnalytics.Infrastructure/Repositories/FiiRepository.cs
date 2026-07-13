@@ -51,13 +51,18 @@ public class FiiRepository : IFiiRepository
                 ? (p.S ?? p.N ?? "0") 
                 : "0";
 
+            string provStr = item.TryGetValue("TotalProventos", out var pr) 
+                ? (pr.S ?? pr.N ?? "0") 
+                : "0";
+
             listaCarteira.Add(new Carteira
             {
                 Ticker = item.TryGetValue("Ticker", out var t) ? (t.S ?? "") : "",
                 Quantidade = item.TryGetValue("Quantidade", out var q) ? int.Parse(q.N ?? "0") : 0,
                 PrecoMedio = decimal.TryParse(precoStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedPreco) 
                 ? parsedPreco
-                : 0
+                : 0,
+                TotalProventos = decimal.TryParse(provStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedProv) ? parsedProv : 0
             });
         }
 

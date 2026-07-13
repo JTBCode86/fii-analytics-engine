@@ -23,7 +23,7 @@ namespace FiiAnalytics.Tests.Application.Handlers
                     .ReturnsAsync((string pk, string sk) => sk == "METADATA" ? mercado : carteira);
 
             var handler = new GetAtivoConsolidadoHandler(mockRepo.Object);
-            var query = new GetAtivoConsolidadoQuery(ticker);
+            var query = new GetAtivoConsolidadoQuery(ticker, "user123");
 
             // Act
             var result = await handler.Handle(query, CancellationToken.None);
@@ -48,7 +48,7 @@ namespace FiiAnalytics.Tests.Application.Handlers
                     .ReturnsAsync((Dictionary<string, AttributeValue>)null);
 
             var handler = new GetAtivoConsolidadoHandler(mockRepo.Object);
-            var query = new GetAtivoConsolidadoQuery(ticker);
+            var query = new GetAtivoConsolidadoQuery(ticker, "user123");
 
             // Act
             var result = await handler.Handle(query, CancellationToken.None);
@@ -74,7 +74,7 @@ namespace FiiAnalytics.Tests.Application.Handlers
             var handler = new GetAtivoConsolidadoHandler(mockRepo.Object);
 
             // Act
-            var result = await handler.Handle(new GetAtivoConsolidadoQuery("SNCI11"), CancellationToken.None);
+            var result = await handler.Handle(new GetAtivoConsolidadoQuery("SNCI11", "user123"), CancellationToken.None);
 
             // Assert
             Assert.Equal(0, result.Performance); // Garante que a lógica precoMedio > 0 trata o erro
@@ -93,7 +93,7 @@ namespace FiiAnalytics.Tests.Application.Handlers
             var handler = new GetAtivoConsolidadoHandler(mockRepo.Object);
 
             // Act
-            var result = await handler.Handle(new GetAtivoConsolidadoQuery("SNCI11"), CancellationToken.None);
+            var result = await handler.Handle(new GetAtivoConsolidadoQuery("SNCI11","user123"), CancellationToken.None);
 
             // Assert
             Assert.Equal(0, result.CotacaoAtual); // O ExtrairDecimal deve retornar 0 ao falhar no TryParse
@@ -108,7 +108,7 @@ namespace FiiAnalytics.Tests.Application.Handlers
 
             // Act
             // Passando ticker em minúsculas
-            var result = await handler.Handle(new GetAtivoConsolidadoQuery("snci11"), CancellationToken.None);
+            var result = await handler.Handle(new GetAtivoConsolidadoQuery("snci11","user123"), CancellationToken.None);
 
             // Assert
             // O mock verifica se a busca foi feita com "SNCI11" (ToUpper)
@@ -129,7 +129,7 @@ namespace FiiAnalytics.Tests.Application.Handlers
             mockRepo.Setup(r => r.GetAsync("USER#123456", $"CARTEIRA#{ticker}")).ReturnsAsync((Dictionary<string, AttributeValue>)null);
 
             var handler = new GetAtivoConsolidadoHandler(mockRepo.Object);
-            var query = new GetAtivoConsolidadoQuery(ticker);
+            var query = new GetAtivoConsolidadoQuery(ticker, "user123");
 
             // Act
             var result = await handler.Handle(query, CancellationToken.None);

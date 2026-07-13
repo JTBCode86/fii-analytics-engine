@@ -10,4 +10,6 @@ public class Carteira
     public int Quantidade { get; set; }
     public decimal PrecoMedio { get; set; }
 
+    public decimal TotalProventos { get; set; }
+
 }

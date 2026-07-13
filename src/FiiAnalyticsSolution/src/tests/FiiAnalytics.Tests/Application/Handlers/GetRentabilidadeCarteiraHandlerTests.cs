@@ -99,7 +99,7 @@ namespace FiiAnalytics.Tests.Application.Handlers
             // E a cotação atual subiu para 11 (Lucro de 10%)
              var carteiraMock = new List<Carteira>
              {
-                  new Carteira { Ticker = "HGLG11", Quantidade = 10, PrecoMedio = 10m }
+                  new Carteira { Ticker = "HGLG11", Quantidade = 10, PrecoMedio = 10m, TotalProventos = 5 }
              };
 
              var metadadosMock = new List<Fii>
@@ -123,7 +123,7 @@ namespace FiiAnalytics.Tests.Application.Handlers
             Assert.Equal(110m, result.ValorAtual);
 
             // 3. A rentabilidade global deve ser 0.1 (ou seja, 10%)
-            Assert.Equal(0.1m, result.RentabilidadeGlobal);
+            Assert.Equal(0.15m, result.RentabilidadeGlobal);
 
             // 4. Verifica se o item específico na lista também calculou a rentabilidade
             var ativo = result.Ativos.FirstOrDefault(a => a.Ticker == "HGLG11");
@@ -140,7 +140,7 @@ namespace FiiAnalytics.Tests.Application.Handlers
             // Simula uma carteira onde o custo do ativo é zero
             var carteiraMock = new List<Carteira>
             {
-                new Carteira { Ticker = "HGLG11", Quantidade = 1, PrecoMedio = 0m }
+                new Carteira { Ticker = "HGLG11", Quantidade = 1, PrecoMedio = 0m, TotalProventos = 5 }
             };
                     var metadadosMock = new List<Fii>
             {

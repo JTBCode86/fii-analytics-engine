@@ -3,8 +3,8 @@
     public class FundoResponse
     {
         public string Ticker { get; set; }
-        public decimal CotacaoAtual { get; set; }
-        public decimal PrecoMedio { get; set; }
-        public decimal Performance { get; set; }
+        [property: JsonDecimalFormat("F2")] public decimal CotacaoAtual { get; set; }
+        [property: JsonDecimalFormat("F2")] public decimal PrecoMedio { get; set; }
+        [property: JsonDecimalFormat("F4")] public decimal Performance { get; set; }
     }
 }

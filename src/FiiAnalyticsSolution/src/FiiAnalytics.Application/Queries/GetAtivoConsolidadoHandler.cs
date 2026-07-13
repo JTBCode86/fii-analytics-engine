@@ -17,8 +17,10 @@ namespace FiiAnalytics.Application.Queries
         public async Task<FundoResponse> Handle(GetAtivoConsolidadoQuery request, CancellationToken cancellationToken)
         {
             var ticker = request.Ticker.ToUpper();
+            var usuarioId = request.UsuarioId.StartsWith("USER#") ? request.UsuarioId : $"USER#{request.UsuarioId}";
+
             var taskMercado = _repo.GetAsync($"ATIVO#{ticker}", "METADATA");
-            var taskCarteira = _repo.GetAsync("USER#123456", $"CARTEIRA#{ticker}");
+            var taskCarteira = _repo.GetAsync(usuarioId, $"CARTEIRA#{ticker}");
 
             await Task.WhenAll(taskMercado, taskCarteira);
 

@@ -31,6 +31,7 @@ namespace FiiAnalytics.Application.Queries
 
             decimal totalInvestido = 0;
             decimal valorAtual = 0;
+            decimal totalProventos = 0;
             var listaAtivos = new List<FiiAnalytics.Application.DTOs.AtivoAnaliseDto>();
 
             // 4. Processa cada ativo e calcula agregados
@@ -43,6 +44,7 @@ namespace FiiAnalytics.Application.Queries
 
                 totalInvestido += custoAtivo;
                 valorAtual += valorAtivo;
+                totalProventos += item.TotalProventos;
 
                 listaAtivos.Add(new FiiAnalytics.Application.DTOs.AtivoAnaliseDto(
                     item.Ticker,
@@ -55,14 +57,17 @@ namespace FiiAnalytics.Application.Queries
                 ));
             }
 
-            // Rentabilidade global com proteção contra divisão por zero
-            decimal rentabilidadeGlobal = totalInvestido > 0 ? (valorAtual / totalInvestido) - 1 : 0;
+            // Rentabilidade global com Total Return (Valor Atual + Proventos)
+            // Fórmula: ((Valor Atual + Proventos) / Total Investido) - 1
+            decimal rentabilidadeGlobal = totalInvestido > 0
+                ? ((valorAtual + totalProventos) / totalInvestido) - 1
+                : 0;
 
             return new CarteiraAnaliseResponse(
                 rentabilidadeGlobal,
                 totalInvestido,
                 valorAtual,
-                0, // Total Dividendos
+                totalProventos,
                 listaAtivos
             );
         }
