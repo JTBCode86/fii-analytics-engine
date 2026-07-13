@@ -11,4 +11,6 @@ public interface IFiiRepository
     Task<(List<Carteira> Carteira, List<Fii> Metadados)> ObterCarteiraComMetadadosAsync(string usuarioId);
 
     Task<dynamic> GetAsync(string pk, string sk);
+
+    Task<bool> UsuarioExisteAsync(string usuarioId);
 }
