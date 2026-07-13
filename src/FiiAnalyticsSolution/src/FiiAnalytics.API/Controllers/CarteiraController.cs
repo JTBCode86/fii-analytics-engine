@@ -68,10 +68,15 @@ public class CarteiraController : ControllerBase
 
     [HttpGet("ativo/{ticker}")]
     [ProducesResponseType(typeof(FundoResponse), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAtivoConsolidado(string ticker)
+    public async Task<IActionResult> GetAtivoConsolidado(
+        [FromHeader(Name = "X-Usuario-Id")] string usuarioId,
+        string ticker)
     {
-        // A query espera apenas o Ticker, pois o usuário está fixo no Handler por enquanto
-        var query = new GetAtivoConsolidadoQuery(ticker);
+
+        if (string.IsNullOrEmpty(usuarioId))
+            return BadRequest("O cabeçalho 'X-Usuario-Id' é obrigatório.");
+
+        var query = new GetAtivoConsolidadoQuery(ticker, usuarioId);
         var resultado = await _ativoConsolidadoHandler.Handle(query, CancellationToken.None);
 
         if (resultado == null)
