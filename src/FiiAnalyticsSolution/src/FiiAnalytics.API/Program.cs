@@ -42,6 +42,20 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (KeyNotFoundException ex)
+    {
+        context.Response.StatusCode = 404; // Not Found
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new { error = ex.Message });
+    }
+});
+
 app.UseAuthorization();
 app.MapControllers();
 
