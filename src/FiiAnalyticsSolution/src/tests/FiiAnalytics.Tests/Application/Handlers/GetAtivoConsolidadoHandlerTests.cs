@@ -21,6 +21,9 @@ namespace FiiAnalytics.Tests.Application.Handlers
 
             mockRepo.Setup(r => r.GetAsync(It.IsAny<string>(), It.IsAny<string>()))
                     .ReturnsAsync((string pk, string sk) => sk == "METADATA" ? mercado : carteira);
+            
+            mockRepo.Setup(repo => repo.UsuarioExisteAsync(It.IsAny<string>()))
+                    .ReturnsAsync(true);
 
             var handler = new GetAtivoConsolidadoHandler(mockRepo.Object);
             var query = new GetAtivoConsolidadoQuery(ticker, "user123");
@@ -47,6 +50,9 @@ namespace FiiAnalytics.Tests.Application.Handlers
             mockRepo.Setup(r => r.GetAsync(It.IsAny<string>(), It.IsAny<string>()))
                     .ReturnsAsync((Dictionary<string, AttributeValue>)null);
 
+            mockRepo.Setup(repo => repo.UsuarioExisteAsync(It.IsAny<string>()))
+                    .ReturnsAsync(true);
+
             var handler = new GetAtivoConsolidadoHandler(mockRepo.Object);
             var query = new GetAtivoConsolidadoQuery(ticker, "user123");
 
@@ -68,8 +74,12 @@ namespace FiiAnalytics.Tests.Application.Handlers
             var mockRepo = new Mock<IFiiRepository>();
             // Simula PrecoMedio = 0
             var carteira = new Dictionary<string, AttributeValue> { { "PrecoMedio", new AttributeValue { N = "0" } } };
+            
             mockRepo.Setup(r => r.GetAsync(It.IsAny<string>(), It.IsAny<string>()))
                     .ReturnsAsync(carteira);
+
+            mockRepo.Setup(repo => repo.UsuarioExisteAsync(It.IsAny<string>()))
+                    .ReturnsAsync(true);
 
             var handler = new GetAtivoConsolidadoHandler(mockRepo.Object);
 
@@ -87,6 +97,10 @@ namespace FiiAnalytics.Tests.Application.Handlers
             var mockRepo = new Mock<IFiiRepository>();
             // Simula um valor que não é um número válido ("abc")
             var mercado = new Dictionary<string, AttributeValue> { { "Cotacao", new AttributeValue { N = "abc" } } };
+
+            mockRepo.Setup(repo => repo.UsuarioExisteAsync(It.IsAny<string>()))
+                    .ReturnsAsync(true);
+
             mockRepo.Setup(r => r.GetAsync(It.IsAny<string>(), It.IsAny<string>()))
                     .ReturnsAsync(mercado);
 
@@ -106,6 +120,9 @@ namespace FiiAnalytics.Tests.Application.Handlers
             var mockRepo = new Mock<IFiiRepository>();
             var handler = new GetAtivoConsolidadoHandler(mockRepo.Object);
 
+            mockRepo.Setup(repo => repo.UsuarioExisteAsync(It.IsAny<string>()))
+         .ReturnsAsync(true);
+
             // Act
             // Passando ticker em minúsculas
             var result = await handler.Handle(new GetAtivoConsolidadoQuery("snci11","user123"), CancellationToken.None);
@@ -120,6 +137,9 @@ namespace FiiAnalytics.Tests.Application.Handlers
         {
             // Arrange
             var mockRepo = new Mock<IFiiRepository>();
+            mockRepo.Setup(repo => repo.UsuarioExisteAsync(It.IsAny<string>()))
+                .ReturnsAsync(true);
+
             var ticker = "SNCI11";
 
             // Simulando: Mercado possui cotação, mas Carteira está vazia (nula)
