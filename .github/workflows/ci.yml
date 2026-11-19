@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  dotnet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - run: dotnet test src/FiiAnalyticsSolution/src/FiiAnalyticsSolution.sln --verbosity minimal
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install -r src/FiiAnalyticsSolution/serverless/lambdas/processar_carteira/requirements.txt -r src/FiiAnalyticsSolution/serverless/lambdas/scraper_ativos/requirements.txt
+      - name: Start DynamoDB
+        run: |
+          docker run -d --name fii-ci-localstack -p 127.0.0.1:4566:4566 -e SERVICES=dynamodb localstack/localstack:3.7.2
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:4566/_localstack/health | grep -Eq '"dynamodb": "(available|running)"'; then exit 0; fi
+            sleep 2
+          done
+          docker logs fii-ci-localstack
+          exit 1
+      - name: Test Lambdas and import transactions
+        env:
+          FII_TEST_DYNAMODB_ENDPOINT: http://127.0.0.1:4566
+        run: python -m unittest discover -s src/FiiAnalyticsSolution/serverless/tests -v
+      - name: Stop LocalStack
+        if: always()
+        run: docker rm -f fii-ci-localstack || true
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/FiiAnalyticsSolution/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/FiiAnalyticsSolution/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test

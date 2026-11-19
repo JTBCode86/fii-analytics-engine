@@ -7,6 +7,7 @@ using FiiAnalytics.Infrastructure.Repositories;
 
 namespace FiiAnalytics.Tests.Infrastructure.Repositories
 {
+    [Trait("Category", "Integration")]
     public class FiiRepositoryIntegrationTests : IAsyncLifetime
     {
         private readonly LocalStackContainer _localStack = new LocalStackBuilder()
@@ -87,7 +88,7 @@ namespace FiiAnalytics.Tests.Infrastructure.Repositories
                 // O repositório espera o prefixo "USER#"
                 { "PK", new AttributeValue { S = $"USER#{usuarioId}" } }, 
                 // Sua query não define SK, mas se houver um, deve ser consistente
-                { "SK", new AttributeValue { S = "CARTEIRA" } },
+                { "SK", new AttributeValue { S = "CARTEIRA#HGLG11" } },
                 { "Quantidade", new AttributeValue { N = quantidadeFinal.ToString() } },
                 { "Ticker", new AttributeValue { S = "HGLG11" } } // Adicionado para evitar erro na leitura
             }
@@ -121,10 +122,50 @@ namespace FiiAnalytics.Tests.Infrastructure.Repositories
         #region Testes de Integração
 
         [Fact]
+        public async Task Importacao_ConsultaSomenteSnapshotAtivoEIsolaStatusPorUsuario()
+        {
+            const string usuario = "SNAPSHOT";
+            var id = Guid.NewGuid();
+            var importacoes = new ImportacaoRepository(_dynamoClient);
+            await SeedDataAsync(usuario, quantidadeInicial: 5);
+            await importacoes.RegistrarAsync(usuario, id, CancellationToken.None);
+            await _dynamoClient.PutItemAsync(new PutItemRequest
+            {
+                TableName = "FiiAnalyticsDb",
+                Item = new Dictionary<string, AttributeValue>
+                {
+                    ["PK"] = new() { S = $"SNAPSHOT#{usuario}#{id}" },
+                    ["SK"] = new() { S = "ATIVO#XPLG11" },
+                    ["Ticker"] = new() { S = "XPLG11" },
+                    ["Quantidade"] = new() { N = "3" },
+                    ["PrecoMedio"] = new() { S = "10.005000" }
+                }
+            });
+            await _dynamoClient.UpdateItemAsync(new UpdateItemRequest
+            {
+                TableName = "FiiAnalyticsDb",
+                Key = new Dictionary<string, AttributeValue>
+                {
+                    ["PK"] = new() { S = $"USER#{usuario}" },
+                    ["SK"] = new() { S = "IMPORTACAO#CONTROLE" }
+                },
+                UpdateExpression = "SET CarteiraAtiva = :id",
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue> { [":id"] = new() { S = id.ToString() } }
+            });
+
+            var result = await new FiiRepository(_dynamoClient).ObterCarteiraComMetadadosAsync(usuario);
+            var ativo = Assert.Single(result.Carteira);
+            Assert.Equal("XPLG11", ativo.Ticker);
+            Assert.Equal(10.005m, ativo.PrecoMedio);
+            Assert.Equal("PENDENTE", (await importacoes.ObterAsync(usuario, id, CancellationToken.None))!.Status);
+            Assert.Null(await importacoes.ObterAsync("OUTRO", id, CancellationToken.None));
+        }
+
+        [Fact]
         public async Task ObterCarteiraComMetadadosAsync_DeveRetornarDados_QuandoExistiremNoDynamo()
         {
             var repo = new FiiRepository(_dynamoClient);
-            var usuarioId = "USER#123";
+            var usuarioId = "123";
 
             await SeedDataAsync(usuarioId, quantidadeInicial: 10);
 
@@ -148,7 +189,7 @@ namespace FiiAnalytics.Tests.Infrastructure.Repositories
         public async Task ObterCarteiraComMetadadosAsync_DeveRetornarDadosAtualizados_QuandoItemForAtualizadoNoDynamo()
         {
             var repo = new FiiRepository(_dynamoClient);
-            var usuarioId = "USER#123";
+            var usuarioId = "123";
 
             await SeedDataAsync(usuarioId, quantidadeInicial: 10);
             await SeedDataAsync(usuarioId, quantidadeAtualizada: 50);
@@ -179,7 +220,7 @@ namespace FiiAnalytics.Tests.Infrastructure.Repositories
                 Item = new Dictionary<string, AttributeValue>
                 {
                     { "PK", new AttributeValue { S = $"USER#{usuarioId}" } },
-                    { "SK", new AttributeValue { S = "CARTEIRA" } },
+                    { "SK", new AttributeValue { S = $"CARTEIRA#{ticker}" } },
                     { "Ticker", new AttributeValue { S = ticker } },
                     { "Quantidade", new AttributeValue { N = "10" } },
                     { "PrecoMedio", new AttributeValue { N = precoMedio.ToString(culture) } }
@@ -248,7 +289,7 @@ namespace FiiAnalytics.Tests.Infrastructure.Repositories
                 Item = new Dictionary<string, AttributeValue>
         {
             { "PK", new AttributeValue { S = $"USER#{usuarioId}" } },
-            { "SK", new AttributeValue { S = "CARTEIRA" } },
+            { "SK", new AttributeValue { S = $"CARTEIRA#{ticker}" } },
             { "Ticker", new AttributeValue { S = ticker } },
             { "Quantidade", new AttributeValue { N = "1" } },
             { "PrecoMedio", new AttributeValue { N = "10.0" } }

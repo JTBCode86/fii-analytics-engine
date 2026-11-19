@@ -4,5 +4,6 @@ public record CarteiraImportadaEvent(
     string UsuarioId,
     string S3Key,
     string BucketName,
-    DateTime DataCriacao
+    DateTime DataCriacao,
+    Guid ImportacaoId
 );

@@ -23,24 +23,27 @@ namespace FiiAnalytics.Application.Queries
             // 2. Busca os dados consolidados usando o ID normalizado
             var (carteira, metadados) = await _repository.ObterCarteiraComMetadadosAsync(usuarioIdNormalizado);
 
-            // 3. Cláusula de guarda: trata cenários onde a carteira ou metadados são nulos
             if (carteira == null || metadados == null)
-            {
-                return new CarteiraAnaliseResponse(0, 0, 0, 0, new List<FiiAnalytics.Application.DTOs.AtivoAnaliseDto>());
-            }
+                throw new InvalidOperationException("O repositório retornou dados incompletos da carteira.");
 
             decimal totalInvestido = 0;
             decimal valorAtual = 0;
             decimal totalProventos = 0;
             var listaAtivos = new List<FiiAnalytics.Application.DTOs.AtivoAnaliseDto>();
+            var estimativas = new List<EstimativaProventoAtivoDto>();
+            decimal estimativaAnual = 0;
+            bool estimativaCompleta = true;
 
             // 4. Processa cada ativo e calcula agregados
             foreach (var item in carteira)
             {
                 var meta = metadados.FirstOrDefault(m => m.Ticker == item.Ticker);
+                if (meta == null || meta.Cotacao <= 0)
+                    throw new DadosMercadoIndisponiveisException(item.Ticker);
 
                 decimal custoAtivo = item.PrecoMedio * item.Quantidade;
-                decimal valorAtivo = (meta?.Cotacao ?? item.PrecoMedio) * item.Quantidade;
+                decimal valorAtivo = meta.Cotacao * item.Quantidade;
+                decimal? dividendYield = meta.DividendYield is >= 0 ? meta.DividendYield : null;
 
                 totalInvestido += custoAtivo;
                 valorAtual += valorAtivo;
@@ -50,11 +53,22 @@ namespace FiiAnalytics.Application.Queries
                     item.Ticker,
                     item.Quantidade,
                     item.PrecoMedio,
-                    meta?.Cotacao ?? 0,
-                    meta?.PVP ?? 0,
-                    meta?.DividendYield ?? 0,
-                    custoAtivo > 0 ? (valorAtivo / custoAtivo) - 1 : 0
+                    meta.Cotacao,
+                    meta.PVP,
+                    dividendYield,
+                    custoAtivo > 0 ? (valorAtivo / custoAtivo) - 1 : 0,
+                    meta.AtualizadoEm
                 ));
+                if (dividendYield.HasValue)
+                {
+                    decimal anual = valorAtivo * dividendYield.Value / 100m;
+                    estimativaAnual += anual;
+                    estimativas.Add(new EstimativaProventoAtivoDto(item.Ticker, anual, anual / 12m));
+                }
+                else
+                {
+                    estimativaCompleta = false;
+                }
             }
 
             // Rentabilidade global com Total Return (Valor Atual + Proventos)
@@ -68,7 +82,10 @@ namespace FiiAnalytics.Application.Queries
                 totalInvestido,
                 valorAtual,
                 totalProventos,
-                listaAtivos
+                listaAtivos,
+                estimativaCompleta && listaAtivos.Count > 0
+                    ? new EstimativaProventosDto(estimativaAnual, estimativaAnual / 12m, estimativas)
+                    : null
             );
         }
     }

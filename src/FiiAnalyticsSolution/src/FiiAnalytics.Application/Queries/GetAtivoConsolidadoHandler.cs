@@ -25,22 +25,26 @@ namespace FiiAnalytics.Application.Queries
             }
 
             var taskMercado = _repo.GetAsync($"ATIVO#{ticker}", "METADATA");
-            var taskCarteira = _repo.GetAsync(usuarioId, $"CARTEIRA#{ticker}");
+            var taskCarteira = _repo.ObterAtivoCarteiraAsync(usuarioId, ticker);
 
             await Task.WhenAll(taskMercado, taskCarteira);
 
             // Converte os resultados para o formato que o DynamoDB devolve
             var mercado = taskMercado.Result as Dictionary<string, AttributeValue>;
             var carteira = taskCarteira.Result as Dictionary<string, AttributeValue>;
+            if (carteira == null || carteira.Count == 0)
+                throw new KeyNotFoundException($"Ativo {ticker} não encontrado na carteira.");
             var cotacao = ExtrairDecimal(mercado, "Cotacao");
             var precoMedio = ExtrairDecimal(carteira, "PrecoMedio");
+            if (cotacao <= 0)
+                throw new DadosMercadoIndisponiveisException(ticker);
 
             // Consolida e retorna o DTO
             return new FundoResponse
             {
                 Ticker = ticker,
-                CotacaoAtual = ExtrairDecimal(mercado, "Cotacao"),
-                PrecoMedio = ExtrairDecimal(carteira, "PrecoMedio"),
+                CotacaoAtual = cotacao,
+                PrecoMedio = precoMedio,
                 Performance = precoMedio > 0 ? (cotacao / precoMedio) - 1 : 0
             };
         }

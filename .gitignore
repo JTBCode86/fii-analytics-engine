@@ -12,6 +12,11 @@ env/
 .pytest_cache/
 .tox/
 
+# --- Front-end ---
+src/FiiAnalyticsSolution/frontend/node_modules/
+src/FiiAnalyticsSolution/frontend/dist/
+src/FiiAnalyticsSolution/frontend/*.tsbuildinfo
+
 # --- .NET / C# ---
 **/bin/
 **/obj/
@@ -45,5 +50,7 @@ Thumbs.db
 #text
 *.txt
 *.csv
+!examples/carteira-ficticia.csv
+!src/FiiAnalyticsSolution/frontend/public/carteira-ficticia.csv
 *.xlsx
 *.xls

@@ -1,6 +1,16 @@
 @FiiAnalytics.API_HostAddress = http://localhost:5116
 
-GET {{FiiAnalytics.API_HostAddress}}/weatherforecast/
+### Consultar o andamento de uma importação
+@usuarioId = 123456
+@importacaoId = 00000000-0000-0000-0000-000000000000
+
+GET {{FiiAnalytics.API_HostAddress}}/api/v1/carteira/importacoes/{{importacaoId}}
+X-Usuario-Id: {{usuarioId}}
 Accept: application/json
 
 ###
+
+### Observar importações do usuário e filas compartilhadas
+GET {{FiiAnalytics.API_HostAddress}}/api/v1/observabilidade
+X-Usuario-Id: {{usuarioId}}
+Accept: application/json

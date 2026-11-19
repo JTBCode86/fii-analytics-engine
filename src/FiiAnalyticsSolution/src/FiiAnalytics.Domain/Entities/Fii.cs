@@ -6,6 +6,7 @@ public class Fii
 
     public string Ticker { get; set; }
     public decimal Cotacao { get; set; }
-    public decimal DividendYield { get; set; }
+    public decimal? DividendYield { get; set; }
     public decimal PVP { get; set; }
+    public DateTimeOffset? AtualizadoEm { get; set; }
 }

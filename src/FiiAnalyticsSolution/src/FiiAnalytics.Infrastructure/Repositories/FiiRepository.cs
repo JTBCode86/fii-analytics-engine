@@ -33,61 +33,74 @@ public class FiiRepository : IFiiRepository
 
     public async Task<(List<Carteira> Carteira, List<Fii> Metadados)> ObterCarteiraComMetadadosAsync(string usuarioId)
     {
-        // 1. Busca Carteira com acesso seguro aos dados
+        var (pk, prefixo) = await ObterChaveCarteiraAsync(usuarioId);
         var queryRequest = new QueryRequest
         {
             TableName = TableName,
-            KeyConditionExpression = "PK = :v_pk",
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue> { { ":v_pk", new AttributeValue { S = $"USER#{usuarioId}" } } }
+            ConsistentRead = true,
+            KeyConditionExpression = "PK = :v_pk AND begins_with(SK, :prefixo)",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":v_pk"] = new() { S = pk },
+                [":prefixo"] = new() { S = prefixo }
+            }
         };
 
-        var response = await _dynamoDb.QueryAsync(queryRequest);
-
         var listaCarteira = new List<Carteira>();
-        foreach (var item in response.Items)
+        do
         {
-            // Tenta obter como String (S) ou Number (N)
-            string precoStr = item.TryGetValue("PrecoMedio", out var p) 
-                ? (p.S ?? p.N ?? "0") 
-                : "0";
-
-            string provStr = item.TryGetValue("TotalProventos", out var pr) 
-                ? (pr.S ?? pr.N ?? "0") 
-                : "0";
-
-            listaCarteira.Add(new Carteira
+            var response = await _dynamoDb.QueryAsync(queryRequest);
+            foreach (var item in response.Items ?? new List<Dictionary<string, AttributeValue>>())
             {
-                Ticker = item.TryGetValue("Ticker", out var t) ? (t.S ?? "") : "",
-                Quantidade = item.TryGetValue("Quantidade", out var q) ? int.Parse(q.N ?? "0") : 0,
-                PrecoMedio = decimal.TryParse(precoStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedPreco) 
-                ? parsedPreco
-                : 0,
-                TotalProventos = decimal.TryParse(provStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedProv) ? parsedProv : 0
-            });
-        }
+                string precoStr = item.TryGetValue("PrecoMedio", out var p)
+                    ? (p.S ?? p.N ?? "0")
+                    : "0";
 
-        // 2. Busca Metadados
+                string provStr = item.TryGetValue("TotalProventos", out var pr)
+                    ? (pr.S ?? pr.N ?? "0")
+                    : "0";
+
+                listaCarteira.Add(new Carteira
+                {
+                    Ticker = item.TryGetValue("Ticker", out var t) ? (t.S ?? "") : "",
+                    Quantidade = item.TryGetValue("Quantidade", out var q) ? int.Parse(q.N ?? "0") : 0,
+                    PrecoMedio = decimal.TryParse(precoStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedPreco)
+                        ? parsedPreco : 0,
+                    TotalProventos = decimal.TryParse(provStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedProv)
+                        ? parsedProv : 0
+                });
+            }
+            queryRequest.ExclusiveStartKey = response.LastEvaluatedKey;
+        } while (queryRequest.ExclusiveStartKey != null && queryRequest.ExclusiveStartKey.Count > 0);
+
         var listaMetadados = new List<Fii>();
-        if (listaCarteira.Any())
+        var tickers = listaCarteira.Select(c => c.Ticker.ToUpperInvariant()).Distinct().ToList();
+        foreach (var lote in tickers.Chunk(100))
         {
-            var batchRequest = new BatchGetItemRequest
+            var pendentes = new Dictionary<string, KeysAndAttributes>
             {
-                RequestItems = new Dictionary<string, KeysAndAttributes> {
-                { TableName, new KeysAndAttributes {
-                    Keys = listaCarteira.Select(c => new Dictionary<string, AttributeValue> {
-                        { "PK", new AttributeValue { S = $"ATIVO#{c.Ticker.ToUpper()}" } },
+                [TableName] = new KeysAndAttributes
+                {
+                    Keys = lote.Select(ticker => new Dictionary<string, AttributeValue>
+                    {
+                        { "PK", new AttributeValue { S = $"ATIVO#{ticker}" } },
                         { "SK", new AttributeValue { S = "METADATA" } }
                     }).ToList()
-                }}
-            }
+                }
             };
 
-            var batchResponse = await _dynamoDb.BatchGetItemAsync(batchRequest);
-
-            // Verifica se a tabela existe na resposta e se contém itens
-            if (batchResponse.Responses != null && batchResponse.Responses.TryGetValue(TableName, out var items))
+            for (var tentativa = 0; pendentes.Count > 0; tentativa++)
             {
-                listaMetadados = items.Select(MapearFii).ToList();
+                if (tentativa == 6)
+                    throw new InvalidOperationException("Não foi possível obter todos os metadados do DynamoDB.");
+
+                var batchResponse = await _dynamoDb.BatchGetItemAsync(new BatchGetItemRequest { RequestItems = pendentes });
+                if (batchResponse.Responses != null && batchResponse.Responses.TryGetValue(TableName, out var items))
+                    listaMetadados.AddRange(items.Select(MapearFii));
+
+                pendentes = batchResponse.UnprocessedKeys ?? new Dictionary<string, KeysAndAttributes>();
+                if (pendentes.Count > 0 && tentativa < 5)
+                    await Task.Delay(TimeSpan.FromMilliseconds(100 * (1 << tentativa)));
             }
         }
 
@@ -103,18 +116,31 @@ public class FiiRepository : IFiiRepository
             return "0";
         }
 
+        DateTimeOffset? atualizadoEm = null;
+        if (item.TryGetValue("AtualizadoEm", out var data))
+        {
+            if (!DateTimeOffset.TryParse(data.S, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+                throw new InvalidOperationException("Data de atualização do ativo inválida.");
+            atualizadoEm = parsed;
+        }
+
         return new Fii
         {
             // Se a PK existir, remove o prefixo, senão retorna vazio
             Ticker = item.TryGetValue("PK", out var pk) ? pk.S.Replace("ATIVO#", "") : string.Empty,
             Cotacao = decimal.TryParse(GetValue("Cotacao"), NumberStyles.Any, CultureInfo.InvariantCulture, out var c) ? c : 0,
-            DividendYield = decimal.TryParse(GetValue("DividendYield"), NumberStyles.Any, CultureInfo.InvariantCulture, out var dy) ? dy : 0,
-            PVP = decimal.TryParse(GetValue("PVP"), NumberStyles.Any, CultureInfo.InvariantCulture, out var pvp) ? pvp : 0
+            DividendYield = item.TryGetValue("DividendYield", out var dividendYield) &&
+                decimal.TryParse(dividendYield.S ?? dividendYield.N, NumberStyles.Float, CultureInfo.InvariantCulture, out var dy) && dy >= 0
+                    ? dy : null,
+            PVP = decimal.TryParse(GetValue("PVP"), NumberStyles.Any, CultureInfo.InvariantCulture, out var pvp) ? pvp : 0,
+            AtualizadoEm = atualizadoEm
         };
     }
 
     public async Task SalvarFiiAsync(Fii fii)
     {
+        if (!fii.DividendYield.HasValue || fii.DividendYield < 0)
+            throw new InvalidOperationException("Dividend yield indisponível ou inválido.");
         var request = new PutItemRequest
         {
             TableName = TableName,
@@ -124,7 +150,7 @@ public class FiiRepository : IFiiRepository
                 { "SK", new AttributeValue { S = "METRICAS" } },
                 { "Ticker", new AttributeValue { S = fii.Ticker } },
                 { "Cotacao", new AttributeValue { N = fii.Cotacao.ToString() } },
-                { "DividendYield", new AttributeValue { N = fii.DividendYield.ToString() } },
+                { "DividendYield", new AttributeValue { N = fii.DividendYield.Value.ToString(CultureInfo.InvariantCulture) } },
                 { "PVP", new AttributeValue { N = fii.PVP.ToString() } }
             }
         };
@@ -148,6 +174,34 @@ public class FiiRepository : IFiiRepository
 
         // Retorna o dicionário bruto.
         return response.Item;
+    }
+
+    public async Task<dynamic> ObterAtivoCarteiraAsync(string usuarioId, string ticker)
+    {
+        var (pk, prefixo) = await ObterChaveCarteiraAsync(usuarioId);
+        return await GetAsync(pk, $"{prefixo}{ticker}");
+    }
+
+    private async Task<(string Pk, string Prefixo)> ObterChaveCarteiraAsync(string usuarioId)
+    {
+        var id = usuarioId.StartsWith("USER#", StringComparison.Ordinal) ? usuarioId[5..] : usuarioId;
+        var controle = await _dynamoDb.GetItemAsync(new GetItemRequest
+        {
+            TableName = TableName,
+            ConsistentRead = true,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                ["PK"] = new() { S = $"USER#{id}" },
+                ["SK"] = new() { S = "IMPORTACAO#CONTROLE" }
+            }
+        });
+        if (controle.Item != null && controle.Item.TryGetValue("CarteiraAtiva", out var versao))
+        {
+            if (string.IsNullOrWhiteSpace(versao.S))
+                throw new InvalidOperationException("A versão ativa da carteira é inválida.");
+            return ($"SNAPSHOT#{id}#{versao.S}", "ATIVO#");
+        }
+        return ($"USER#{id}", "CARTEIRA#");
     }
 
     public async Task<bool> UsuarioExisteAsync(string usuarioId)

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 echo "########### INICIANDO PROVISIONAMENTO E DEPLOY DE LAMBDAS ###########"
 
 REGION="us-east-1"
@@ -13,13 +14,22 @@ echo "-> Criando Bucket S3: ${BUCKET_NAME}..."
 aws --endpoint-url=$ENDPOINT s3 mb s3://$BUCKET_NAME --region $REGION
 
 echo "-> Criando Filas SQS..."
-# Fila para importar carteiras
-aws --endpoint-url=$ENDPOINT sqs create-queue --queue-name fii-importacao-queue --region $REGION
-# Fila para o scraper (a nova fila de automação)
-SCRAPER_QUEUE_URL=$(aws --endpoint-url=$ENDPOINT sqs create-queue --queue-name scraper-queue --query 'QueueUrl' --output text --region $REGION)
+IMPORT_DLQ_URL=$(aws --endpoint-url=$ENDPOINT sqs create-queue --queue-name fii-importacao-dlq --query 'QueueUrl' --output text --region $REGION)
+SCRAPER_DLQ_URL=$(aws --endpoint-url=$ENDPOINT sqs create-queue --queue-name scraper-dlq --query 'QueueUrl' --output text --region $REGION)
+IMPORT_DLQ_ARN=$(aws --endpoint-url=$ENDPOINT sqs get-queue-attributes \
+    --queue-url "$IMPORT_DLQ_URL" --attribute-names QueueArn --query 'Attributes.QueueArn' --output text --region $REGION)
+SCRAPER_DLQ_ARN=$(aws --endpoint-url=$ENDPOINT sqs get-queue-attributes \
+    --queue-url "$SCRAPER_DLQ_URL" --attribute-names QueueArn --query 'Attributes.QueueArn' --output text --region $REGION)
+
+IMPORT_ATTRIBUTES="{\"VisibilityTimeout\":\"360\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$IMPORT_DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"5\\\"}\"}"
+SCRAPER_ATTRIBUTES="{\"VisibilityTimeout\":\"360\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$SCRAPER_DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"5\\\"}\"}"
+IMPORT_QUEUE_URL=$(aws --endpoint-url=$ENDPOINT sqs create-queue --queue-name fii-importacao-queue \
+    --attributes "$IMPORT_ATTRIBUTES" --query 'QueueUrl' --output text --region $REGION)
+SCRAPER_QUEUE_URL=$(aws --endpoint-url=$ENDPOINT sqs create-queue --queue-name scraper-queue \
+    --attributes "$SCRAPER_ATTRIBUTES" --query 'QueueUrl' --output text --region $REGION)
 
 SQS_IMPORT_ARN=$(aws --endpoint-url=$ENDPOINT sqs get-queue-attributes \
-    --queue-url $ENDPOINT/000000000000/fii-importacao-queue \
+    --queue-url $IMPORT_QUEUE_URL \
     --attribute-names QueueArn --query "Attributes.QueueArn" --output text --region $REGION)
 
 SQS_SCRAPER_ARN=$(aws --endpoint-url=$ENDPOINT sqs get-queue-attributes \

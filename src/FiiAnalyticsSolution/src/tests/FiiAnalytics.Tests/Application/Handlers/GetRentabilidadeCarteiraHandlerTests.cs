@@ -4,11 +4,14 @@ using FiiAnalytics.Domain.Entities;
 using FiiAnalytics.Domain.Interfaces;
 using Moq;
 using Xunit;
+using System.Text.Json;
+using FiiAnalytics.Application.DTOs;
 
 namespace FiiAnalytics.Tests.Application.Handlers 
 {
     public class GetRentabilidadeCarteiraHandlerTests
     {
+        private sealed record YieldSerializado([property: JsonDecimalFormat("F2")] decimal? Valor);
         private readonly Mock<IFiiRepository> _mockRepo;
         private readonly GetRentabilidadeCarteiraHandler _handler;
 
@@ -19,14 +22,88 @@ namespace FiiAnalytics.Tests.Application.Handlers
         }
 
         [Fact]
+        public void AtivoAnalise_DevePreservarQuatroCasasNaPerformance()
+        {
+            var ativo = new FiiAnalytics.Application.DTOs.AtivoAnaliseDto("HGLG11", 1, 150, 160, 1, 8, 0.066666m, null);
+            using var json = JsonDocument.Parse(JsonSerializer.Serialize(ativo));
+            Assert.Equal("0.0667", json.RootElement.GetProperty("Performance").GetString());
+        }
+
+        [Fact]
+        public void YieldOpcional_SerializaEDesserializaValorOuAusencia()
+        {
+            var valor = JsonSerializer.Serialize(new YieldSerializado(8.5m));
+            var ausente = JsonSerializer.Serialize(new YieldSerializado(null));
+            Assert.Equal("{\"Valor\":\"8.50\"}", valor);
+            Assert.Equal("{\"Valor\":null}", ausente);
+            Assert.Equal(8.5m, JsonSerializer.Deserialize<YieldSerializado>(valor)!.Valor);
+            Assert.Null(JsonSerializer.Deserialize<YieldSerializado>(ausente)!.Valor);
+        }
+
+        [Fact]
+        public async Task Handle_EstimaProventosUsandoValoresDaCarteiraSemArredondarAntesDaSoma()
+        {
+            var carteira = new List<Carteira>
+            {
+                new() { Ticker = "HGLG11", Quantidade = 10, PrecoMedio = 10 },
+                new() { Ticker = "XPLG11", Quantidade = 2, PrecoMedio = 90 }
+            };
+            var metadados = new List<Fii>
+            {
+                new() { Ticker = "HGLG11", Cotacao = 11, DividendYield = 8.5m },
+                new() { Ticker = "XPLG11", Cotacao = 100, DividendYield = 12.5m }
+            };
+            _mockRepo.Setup(r => r.ObterCarteiraComMetadadosAsync("123")).ReturnsAsync((carteira, metadados));
+
+            var result = await _handler.Handle(new GetRentabilidadeCarteiraQuery("123"));
+
+            Assert.NotNull(result.EstimativaProventos);
+            Assert.Equal(34.35m, result.EstimativaProventos.Anual);
+            Assert.Equal(2.8625m, result.EstimativaProventos.MediaMensal);
+            Assert.Equal(9.35m, result.EstimativaProventos.Ativos[0].Anual);
+            Assert.Equal(25m, result.EstimativaProventos.Ativos[1].Anual);
+            using var json = JsonDocument.Parse(JsonSerializer.Serialize(result));
+            Assert.Equal("2.86", json.RootElement.GetProperty("EstimativaProventos").GetProperty("MediaMensal").GetString());
+        }
+
+        [Fact]
+        public async Task Handle_NaoEstimaComYieldAusenteMasAceitaZeroInformado()
+        {
+            var carteira = new List<Carteira>
+            {
+                new() { Ticker = "HGLG11", Quantidade = 1 },
+                new() { Ticker = "XPLG11", Quantidade = 1 }
+            };
+            var metadados = new List<Fii>
+            {
+                new() { Ticker = "HGLG11", Cotacao = 10, DividendYield = 0 },
+                new() { Ticker = "XPLG11", Cotacao = 10, DividendYield = null }
+            };
+            _mockRepo.Setup(r => r.ObterCarteiraComMetadadosAsync("123")).ReturnsAsync((carteira, metadados));
+
+            var result = await _handler.Handle(new GetRentabilidadeCarteiraQuery("123"));
+
+            Assert.Null(result.EstimativaProventos);
+            Assert.Equal(0m, result.Ativos[0].DividendYield);
+            Assert.Null(result.Ativos[1].DividendYield);
+            using var json = JsonDocument.Parse(JsonSerializer.Serialize(result));
+            Assert.Equal("0.00", json.RootElement.GetProperty("Ativos")[0].GetProperty("DividendYield").GetString());
+            Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("Ativos")[1].GetProperty("DividendYield").ValueKind);
+
+            metadados[1].DividendYield = 0;
+            result = await _handler.Handle(new GetRentabilidadeCarteiraQuery("123"));
+            Assert.Equal(0m, result.EstimativaProventos!.Anual);
+        }
+
+        [Fact]
         public async Task Handle_DeveCalcularRentabilidadeTotal_QuandoExistiremMultiplosAtivosNaCarteira()
         {
             // Arrange
             var userId = "USER#123";
 
             // Simulando o retorno da Tupla conforme definido na sua interface
-            var carteiraMock = new List<Carteira> { new Carteira(), new Carteira() };
-            var metadadosMock = new List<Fii> { new Fii(), new Fii() };
+            var carteiraMock = new List<Carteira> { new Carteira { Ticker = "HGLG11" }, new Carteira { Ticker = "XPLG11" } };
+            var metadadosMock = new List<Fii> { new Fii { Ticker = "HGLG11", Cotacao = 10 }, new Fii { Ticker = "XPLG11", Cotacao = 20 } };
 
             // CORREÇÃO: Usando o _mockRepo do escopo da classe
             _mockRepo.Setup(r => r.ObterCarteiraComMetadadosAsync(userId))
@@ -39,6 +116,19 @@ namespace FiiAnalytics.Tests.Application.Handlers
 
             // Assert
             Assert.NotNull(result);
+        }
+
+        [Fact]
+        public async Task Handle_DeveInformarCotacaoIndisponivel_QuandoNaoHouverMetadadosValidos()
+        {
+            _mockRepo.Setup(r => r.ObterCarteiraComMetadadosAsync("123"))
+                .ReturnsAsync((new List<Carteira> { new Carteira { Ticker = "HGLG11", Quantidade = 1, PrecoMedio = 10 } },
+                    new List<Fii> { new Fii { Ticker = "HGLG11", Cotacao = 0 } }));
+
+            var erro = await Assert.ThrowsAsync<DadosMercadoIndisponiveisException>(
+                () => _handler.Handle(new GetRentabilidadeCarteiraQuery("123")));
+
+            Assert.Contains("HGLG11", erro.Message);
         }
 
         [Fact]

@@ -20,6 +20,8 @@ builder.Services.AddSingleton<IAmazonDynamoDB>(new AmazonDynamoDBClient(new Amaz
 // 2. Registro dos Serviços de Infraestrutura
 builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<IQueueService, QueueService>();
+builder.Services.AddScoped<IImportacaoRepository, ImportacaoRepository>();
+builder.Services.AddScoped<IObservabilidadeService, ObservabilidadeService>();
 
 // 3. Registro dos Repositórios (Domain Contracts)
 builder.Services.AddScoped<IFiiRepository, FiiRepository>();
@@ -52,6 +54,12 @@ app.Use(async (context, next) =>
     {
         context.Response.StatusCode = 404; // Not Found
         context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new { error = ex.Message });
+    }
+    catch (DadosMercadoIndisponiveisException ex)
+    {
+        app.Logger.LogWarning(ex, "Dados de mercado indisponÃ­veis.");
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
         await context.Response.WriteAsJsonAsync(new { error = ex.Message });
     }
 });
