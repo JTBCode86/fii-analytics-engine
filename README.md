@@ -7,7 +7,7 @@ Os testes incluem verificações dos handlers .NET, do repositório DynamoDB e d
 
 ### Interface
 
-![Painel com carteira e indicadores fictícios](examples/painel-ficticio.png)
+![Painel com carteira fictícia, estimativa de proventos e instruções para o CSV](examples/painel-carteira-atual.png)
 
 *Captura ilustrativa: carteira, valores e cotações são fictícios. A aplicação consulta a API real e não possui modo de demonstração.*
 
