@@ -19,20 +19,32 @@ O sistema foi desenhado para ser desacoplado e resiliente:
 * **Processamento:** Funções Lambda que reagem a eventos em filas (**SQS**).
 * **Armazenamento:** Persistência estruturada em **Amazon DynamoDB**.
 
+![Animação do fluxo de importação, processamento, atualização de cotações e agendamento](examples/arquitetura-animada.gif)
+
+Na animação, a interface envia o CSV à API; a API o salva no S3 e publica uma mensagem na fila de importação. A Lambda processa o arquivo, enfileira os ativos para o scraper e ativa a nova carteira no DynamoDB. O scraper consulta o Status Invest e atualiza os indicadores; ele também é acionado periodicamente pelo EventBridge.
+
+<details>
+<summary>Ver diagrama estático da arquitetura</summary>
+
 ```mermaid
 graph TD
+    U["Interface React"] -->|"Consulta e envio de CSV"| A
     subgraph LocalStack ["LocalStack / Cloud AWS"]
-        A["API (.NET)"] -->|"1. Upload CSV"| B["Amazon S3"]
-        A -->|"2. Mensagem SQS"| C["processar-carteira-lambda"]
+        A["API (.NET)"] -->|"Salva CSV"| B["Amazon S3"]
+        A -->|"Publica importação"| I["SQS de importação"]
+        I -->|"Aciona"| C["processar-carteira-lambda"]
         C -->|"Lê CSV"| B
-        C -->|"3. Grava/Update"| D[("DynamoDB")]
-        
-        E["AWS EventBridge"] -->|"4. Trigger Temporal"| F["scraper-ativos-lambda"]
-        G["SQS (scraper-queue)"] -.->|"5. Trigger Evento"| F
-        F -->|"6. Scraping StatusInvest"| H["Portal StatusInvest"]
-        F -->|"7. Atualiza Metadados"| D
+        C -->|"Ativa carteira"| D[("DynamoDB")]
+        C -->|"Enfileira ativos"| G["SQS scraper"]
+        G -->|"Aciona"| F["scraper-ativos-lambda"]
+        E["AWS EventBridge"] -->|"Agendamento"| F
+        F -->|"Atualiza indicadores"| D
+        A -->|"Consulta carteira e status"| D
     end
+    F -->|"Consulta dados de mercado"| H["Portal Status Invest"]
 ```
+
+</details>
 
 ## 🛠️ Tecnologias Utilizadas
 * 🐍 **Linguagens:** Python 3.10+ (Data Engineering) e C#/.NET (API Service).
