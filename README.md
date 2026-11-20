@@ -4,7 +4,15 @@ Uma aplicação didática para importar e acompanhar carteiras de fundos imobili
 
 > **Uso local e educacional.** A API não possui autenticação ou autorização e não deve ser exposta a redes ou usuários não confiáveis. As informações apresentadas não constituem recomendação de investimento.
 
-[Interface](#interface) · [Execução local](#execução-local) · [Formato da carteira](#formato-da-carteira) · [Arquitetura](#arquitetura-e-fluxo-de-dados) · [API](#api) · [Observabilidade](#observabilidade-e-operação) · [Testes](#testes-e-build)
+## Índice
+
+- [Interface](#interface)
+- [Execução local](#execução-local)
+- [Formato da carteira](#formato-da-carteira)
+- [Arquitetura](#arquitetura-e-fluxo-de-dados)
+- [API](#api)
+- [Observabilidade](#observabilidade-e-operação)
+- [Testes](#testes-e-build)
 
 ## Visão geral
 
