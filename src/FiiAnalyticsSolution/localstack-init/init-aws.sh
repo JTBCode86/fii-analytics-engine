@@ -58,6 +58,16 @@ aws --endpoint-url=$ENDPOINT s3 cp /tmp/scraper_ativos.zip s3://$BUCKET_NAME/pac
 # 3. Deploy das Lambdas
 # ==============================================================================
 
+aguardar_lambda() {
+    local nome="$1"
+    echo "-> Aguardando a Lambda ${nome} ficar ativa..."
+    if ! aws --endpoint-url=$ENDPOINT lambda wait function-active-v2 \
+        --function-name "$nome" --region $REGION; then
+        echo "ERRO: A Lambda ${nome} não ficou ativa. Verifique os logs do LocalStack." >&2
+        return 1
+    fi
+}
+
 echo "-> Efetuando Deploy da Lambda: processar-carteira-lambda..."
 aws --endpoint-url=$ENDPOINT lambda create-function \
     --function-name processar-carteira-lambda \
@@ -67,6 +77,8 @@ aws --endpoint-url=$ENDPOINT lambda create-function \
     --code S3Bucket=$BUCKET_NAME,S3Key=packages/processar_carteira.zip \
     --timeout 60 --region $REGION
 
+aguardar_lambda processar-carteira-lambda
+
 echo "-> Efetuando Deploy da Lambda: scraper-ativos-lambda..."
 aws --endpoint-url=$ENDPOINT lambda create-function \
     --function-name scraper-ativos-lambda \
@@ -75,15 +87,14 @@ aws --endpoint-url=$ENDPOINT lambda create-function \
     --handler handler.lambda_handler \
     --code S3Bucket=$BUCKET_NAME,S3Key=packages/scraper_ativos.zip \
     --timeout 60 --region $REGION
+
+aguardar_lambda scraper-ativos-lambda
     
 rm -f /tmp/processar_carteira.zip /tmp/scraper_ativos.zip
 
 # ==============================================================================
 # 4. Configuração dos Gatilhos (Event Driven Architecture)
 # ==============================================================================
-
-echo "-> Aguardando estabilização..."
-sleep 5
 
 # Gatilho para importação de carteiras (SQS)
 aws --endpoint-url=$ENDPOINT lambda create-event-source-mapping \

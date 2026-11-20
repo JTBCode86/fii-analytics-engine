@@ -59,7 +59,7 @@ O Compose empacota as Lambdas, inicia o LocalStack e constrói a API. Acompanhe 
 docker logs -f fiianalytics_localstack
 ```
 
-Aguarde a mensagem `PROVISIONAMENTO CONCLUÍDO COM SUCESSO`. A API estará disponível em `http://localhost:5000`; no ambiente de desenvolvimento, o Swagger está em `http://localhost:5000/swagger`.
+Aguarde a mensagem `PROVISIONAMENTO CONCLUÍDO COM SUCESSO`. O script espera cada Lambda ficar ativa antes de configurar os gatilhos; se uma delas falhar ou não ficar ativa no prazo, o provisionamento é interrompido e o erro aparece nos logs. A API estará disponível em `http://localhost:5000`; no ambiente de desenvolvimento, o Swagger está em `http://localhost:5000/swagger`.
 
 ### 2. Inicie a interface
 
