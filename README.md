@@ -1,18 +1,27 @@
 # FII Analytics Engine
 
+## Descrição
+
 Uma aplicação didática para importar e acompanhar carteiras de fundos imobiliários (FIIs). O projeto combina uma interface web, uma API .NET e processamento orientado a eventos para consolidar posições, consultar indicadores de mercado e estimar proventos.
 
 > **Uso local e educacional.** A API não possui autenticação ou autorização e não deve ser exposta a redes ou usuários não confiáveis. As informações apresentadas não constituem recomendação de investimento.
 
 ## Índice
 
-- [Interface](#interface)
+- [Descrição](#descrição)
+- [Visão geral](#visão-geral)
 - [Execução local](#execução-local)
-- [Formato da carteira](#formato-da-carteira)
+  - [Pré-requisitos](#pré-requisitos)
 - [Arquitetura](#arquitetura-e-fluxo-de-dados)
+- [Interface e demonstrações](#interface)
+- [Formato da carteira](#formato-da-carteira)
+- [Estimativa de proventos](#estimativa-de-proventos)
 - [API](#api)
 - [Observabilidade](#observabilidade-e-operação)
 - [Testes](#testes-e-build)
+- [Falhas e limitações](#falhas-e-limitações)
+- [Tecnologias e estrutura](#tecnologias-e-estrutura)
+- [Contribuições](#contribuições)
 
 ## Visão geral
 
@@ -21,34 +30,6 @@ Uma aplicação didática para importar e acompanhar carteiras de fundos imobili
 - **Proventos:** estimativa bruta baseada no dividend yield histórico de 12 meses.
 - **Observabilidade:** histórico de importações por usuário e contagens aproximadas das filas e DLQs.
 - **Arquitetura:** API .NET, Lambdas Python e serviços AWS simulados localmente pelo LocalStack.
-
-## Interface
-
-![Painel com carteira fictícia, estimativa de proventos e instruções para o CSV](examples/painel-carteira-atual.png)
-
-*A captura contém carteira, valores e cotações fictícios. A aplicação consulta a API e não possui modo de demonstração.*
-
-### Demonstrações
-
-As animações usam dados e respostas simulados; nenhuma carteira é importada de fato.
-
-<details>
-<summary>Importar e consultar uma carteira</summary>
-
-Informe o ID, prepare e envie o CSV, acompanhe o processamento e consulte a carteira com o mesmo ID.
-
-![Demonstração de importação e consulta de uma carteira fictícia](examples/demo-carteira.gif)
-
-</details>
-
-<details>
-<summary>Consultar a observabilidade</summary>
-
-Informe o ID e selecione **Atualizar** para consultar as filas compartilhadas e o histórico de importações do usuário.
-
-![Demonstração da página de observabilidade com dados fictícios](examples/demo-observabilidade.gif)
-
-</details>
 
 ## Execução local
 
@@ -94,6 +75,65 @@ Abra o endereço informado pelo Vite, normalmente `http://127.0.0.1:5173`. Infor
 
 O servidor de desenvolvimento encaminha `/api` para `http://127.0.0.1:5000`. Para outra porta, defina, por exemplo, `$env:API_PROXY_TARGET="http://127.0.0.1:5116"` antes de iniciar o Vite. O build estático precisa ser servido na mesma origem da API ou por um proxy que encaminhe `/api`.
 
+## Arquitetura e fluxo de dados
+
+![Animação do fluxo de importação, processamento, atualização de cotações e agendamento](examples/arquitetura-animada.gif)
+
+1. A interface envia o CSV à API, que salva o arquivo no S3 e publica uma mensagem na fila de importação.
+2. A Lambda de processamento lê o CSV, consolida os ativos, enfileira solicitações para o scraper e ativa a nova versão da carteira no DynamoDB.
+3. A Lambda de scraping consulta o Status Invest e atualiza os indicadores. O EventBridge também a aciona a cada 24 horas para uma varredura periódica.
+4. A API consulta a carteira, os indicadores e o status de importação para atender à interface.
+
+### Diagrama da arquitetura
+
+```mermaid
+graph TD
+    U["Interface React"] -->|"Consulta e envio de CSV"| A
+    subgraph LocalStack ["LocalStack / Cloud AWS"]
+        A["API (.NET)"] -->|"Salva CSV"| B["Amazon S3"]
+        A -->|"Publica importação"| I["SQS de importação"]
+        I -->|"Aciona"| C["processar-carteira-lambda"]
+        C -->|"Lê CSV"| B
+        C -->|"Ativa carteira"| D[("DynamoDB")]
+        C -->|"Enfileira ativos"| G["SQS scraper"]
+        G -->|"Aciona"| F["scraper-ativos-lambda"]
+        E["AWS EventBridge"] -->|"Agendamento"| F
+        F -->|"Atualiza indicadores"| D
+        A -->|"Consulta carteira e status"| D
+    end
+    F -->|"Consulta dados de mercado"| H["Portal Status Invest"]
+```
+
+O script de provisionamento configura o ambiente LocalStack. Uma implantação na AWS requer configuração e infraestrutura apropriadas para aquele ambiente.
+
+## Interface
+
+![Painel com carteira fictícia, estimativa de proventos e instruções para o CSV](examples/painel-carteira-atual.png)
+
+*A captura contém carteira, valores e cotações fictícios. A aplicação consulta a API e não possui modo de demonstração.*
+
+### Demonstrações
+
+As animações usam dados e respostas simulados; nenhuma carteira é importada de fato.
+
+<details>
+<summary>Importar e consultar uma carteira</summary>
+
+Informe o ID, prepare e envie o CSV, acompanhe o processamento e consulte a carteira com o mesmo ID.
+
+![Demonstração de importação e consulta de uma carteira fictícia](examples/demo-carteira.gif)
+
+</details>
+
+<details>
+<summary>Consultar a observabilidade</summary>
+
+Informe o ID e selecione **Atualizar** para consultar as filas compartilhadas e o histórico de importações do usuário.
+
+![Demonstração da página de observabilidade com dados fictícios](examples/demo-observabilidade.gif)
+
+</details>
+
 ## Formato da carteira
 
 Utilize um arquivo CSV em UTF-8, separado por vírgulas. O exemplo [carteira-ficticia.csv](examples/carteira-ficticia.csv) também pode ser baixado pelo cartão de importação.
@@ -127,40 +167,6 @@ média mensal = estimativa anual ÷ 12
 O dividend yield utilizado é o indicador histórico de 12 meses informado pelo Status Invest. O cálculo usa decimais antes do arredondamento; os totais e os valores por ativo são arredondados separadamente.
 
 A estimativa é ilustrativa: não prevê datas, não garante pagamentos e não considera impostos, reinvestimento ou alterações na carteira. Os proventos podem variar ou não ocorrer. Se o yield de algum ativo estiver ausente ou inválido, a estimativa total fica indisponível. A data dos dados aparece por ativo e pode estar ausente em registros antigos.
-
-## Arquitetura e fluxo de dados
-
-![Animação do fluxo de importação, processamento, atualização de cotações e agendamento](examples/arquitetura-animada.gif)
-
-1. A interface envia o CSV à API, que salva o arquivo no S3 e publica uma mensagem na fila de importação.
-2. A Lambda de processamento lê o CSV, consolida os ativos, enfileira solicitações para o scraper e ativa a nova versão da carteira no DynamoDB.
-3. A Lambda de scraping consulta o Status Invest e atualiza os indicadores. O EventBridge também a aciona a cada 24 horas para uma varredura periódica.
-4. A API consulta a carteira, os indicadores e o status de importação para atender à interface.
-
-<details>
-<summary>Ver diagrama estático da arquitetura</summary>
-
-```mermaid
-graph TD
-    U["Interface React"] -->|"Consulta e envio de CSV"| A
-    subgraph LocalStack ["LocalStack / Cloud AWS"]
-        A["API (.NET)"] -->|"Salva CSV"| B["Amazon S3"]
-        A -->|"Publica importação"| I["SQS de importação"]
-        I -->|"Aciona"| C["processar-carteira-lambda"]
-        C -->|"Lê CSV"| B
-        C -->|"Ativa carteira"| D[("DynamoDB")]
-        C -->|"Enfileira ativos"| G["SQS scraper"]
-        G -->|"Aciona"| F["scraper-ativos-lambda"]
-        E["AWS EventBridge"] -->|"Agendamento"| F
-        F -->|"Atualiza indicadores"| D
-        A -->|"Consulta carteira e status"| D
-    end
-    F -->|"Consulta dados de mercado"| H["Portal Status Invest"]
-```
-
-</details>
-
-O script de provisionamento configura o ambiente LocalStack. Uma implantação na AWS requer configuração e infraestrutura apropriadas para aquele ambiente.
 
 ## API
 
@@ -201,17 +207,6 @@ aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name FiiAnalytics
 ```
 
 Os controles e estados são armazenados sob `USER#{id}`; os ativos ficam no snapshot da importação ativa.
-
-### Falhas e limitações
-
-- As filas tentam novamente mensagens malsucedidas e, após cinco recebimentos, encaminham-nas para `fii-importacao-dlq` ou `scraper-dlq`. Investigue antes de reenviar: o processamento pode ocorrer mais de uma vez.
-- As políticas de DLQ são configuradas no provisionamento de novos ambientes. Em instalações existentes, atualize as filas sem apagar os dados.
-- Se o scraping falhar ou retornar indicadores inválidos, os últimos metadados válidos são preservados. Sem cotação válida, a API retorna HTTP `503` nas consultas de carteira e ativo.
-- Se o upload ao S3 for bem-sucedido e o envio à fila falhar, a API retorna erro, mas o arquivo pode permanecer no bucket e precisar de limpeza.
-- `CONCLUIDO` indica que a carteira foi salva, não que todas as cotações foram atualizadas. Falhas tratadas na última tentativa são marcadas como `FALHOU`.
-- Interrupções abruptas, timeout ou indisponibilidade do DynamoDB podem deixar um status em processamento. Verifique logs e DLQ e reimporte se necessário. A interface avisa quando o status fica sem atualização por mais de sete minutos.
-- Mensagens de importação anteriores à inclusão do identificador não são compatíveis com o processador atual. Processe ou remova-as com cuidado antes da atualização; para mensagens já na DLQ, reimporte os arquivos.
-- A varredura periódica pode encontrar tickers de snapshots históricos e gerar atualizações desnecessárias, sem alterar a carteira ativa.
 
 ## Testes e build
 
@@ -254,6 +249,17 @@ Na pasta `src/FiiAnalyticsSolution/frontend`, após `npm ci`:
 npm run build
 npm test
 ```
+
+## Falhas e limitações
+
+- As filas tentam novamente mensagens malsucedidas e, após cinco recebimentos, encaminham-nas para `fii-importacao-dlq` ou `scraper-dlq`. Investigue antes de reenviar: o processamento pode ocorrer mais de uma vez.
+- As políticas de DLQ são configuradas no provisionamento de novos ambientes. Em instalações existentes, atualize as filas sem apagar os dados.
+- Se o scraping falhar ou retornar indicadores inválidos, os últimos metadados válidos são preservados. Sem cotação válida, a API retorna HTTP `503` nas consultas de carteira e ativo.
+- Se o upload ao S3 for bem-sucedido e o envio à fila falhar, a API retorna erro, mas o arquivo pode permanecer no bucket e precisar de limpeza.
+- `CONCLUIDO` indica que a carteira foi salva, não que todas as cotações foram atualizadas. Falhas tratadas na última tentativa são marcadas como `FALHOU`.
+- Interrupções abruptas, timeout ou indisponibilidade do DynamoDB podem deixar um status em processamento. Verifique logs e DLQ e reimporte se necessário. A interface avisa quando o status fica sem atualização por mais de sete minutos.
+- Mensagens de importação anteriores à inclusão do identificador não são compatíveis com o processador atual. Processe ou remova-as com cuidado antes da atualização; para mensagens já na DLQ, reimporte os arquivos.
+- A varredura periódica pode encontrar tickers de snapshots históricos e gerar atualizações desnecessárias, sem alterar a carteira ativa.
 
 ## Tecnologias e estrutura
 
