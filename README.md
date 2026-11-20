@@ -11,6 +11,18 @@ Os testes incluem verificações dos handlers .NET, do repositório DynamoDB e d
 
 *Captura ilustrativa: carteira, valores e cotações são fictícios. A aplicação consulta a API real e não possui modo de demonstração.*
 
+### Demonstrações
+
+As animações mostram a interface com dados e respostas simulados; nenhuma carteira é importada de fato.
+
+**Importar e consultar uma carteira:** informe o ID, prepare e envie o CSV, acompanhe o processamento e consulte a carteira com o mesmo ID.
+
+![Demonstração de importação e consulta de uma carteira fictícia](examples/demo-carteira.gif)
+
+**Observabilidade:** informe o ID e selecione **Atualizar** para consultar as contagens aproximadas das filas compartilhadas e o histórico de importações do usuário.
+
+![Demonstração da página de observabilidade com dados fictícios](examples/demo-observabilidade.gif)
+
 ## 🏗️ Arquitetura do Projeto
 O sistema foi desenhado para ser desacoplado e resiliente:
 
