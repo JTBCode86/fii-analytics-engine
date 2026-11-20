@@ -1,39 +1,133 @@
 # FII Analytics Engine
 
-## Descrição
-O **FII Analytics Engine** é um sistema de engenharia de dados serverless projetado para automação, extração e análise de indicadores financeiros de Fundos de Imobiliários (FIIs). O projeto centraliza a coleta de dados de mercado, processamento e persistência, utilizando uma arquitetura moderna baseada em eventos e escalabilidade em nuvem.
+Uma aplicação didática para importar e acompanhar carteiras de fundos imobiliários (FIIs). O projeto combina uma interface web, uma API .NET e processamento orientado a eventos para consolidar posições, consultar indicadores de mercado e estimar proventos.
 
-Os testes incluem verificações dos handlers .NET, do repositório DynamoDB e das Lambdas Python.
+> **Uso local e educacional.** A API não possui autenticação ou autorização e não deve ser exposta a redes ou usuários não confiáveis. As informações apresentadas não constituem recomendação de investimento.
 
-### Interface
+[Interface](#interface) · [Execução local](#execução-local) · [Formato da carteira](#formato-da-carteira) · [Arquitetura](#arquitetura-e-fluxo-de-dados) · [API](#api) · [Observabilidade](#observabilidade-e-operação) · [Testes](#testes-e-build)
+
+## Visão geral
+
+- **Carteira:** importação de CSV, consolidação de ativos, preço médio, rentabilidade e distribuição.
+- **Dados de mercado:** coleta de cotações e indicadores do Status Invest, com atualização por fila e agendamento.
+- **Proventos:** estimativa bruta baseada no dividend yield histórico de 12 meses.
+- **Observabilidade:** histórico de importações por usuário e contagens aproximadas das filas e DLQs.
+- **Arquitetura:** API .NET, Lambdas Python e serviços AWS simulados localmente pelo LocalStack.
+
+## Interface
 
 ![Painel com carteira fictícia, estimativa de proventos e instruções para o CSV](examples/painel-carteira-atual.png)
 
-*Captura ilustrativa: carteira, valores e cotações são fictícios. A aplicação consulta a API real e não possui modo de demonstração.*
+*A captura contém carteira, valores e cotações fictícios. A aplicação consulta a API e não possui modo de demonstração.*
 
 ### Demonstrações
 
-As animações mostram a interface com dados e respostas simulados; nenhuma carteira é importada de fato.
+As animações usam dados e respostas simulados; nenhuma carteira é importada de fato.
 
-**Importar e consultar uma carteira:** informe o ID, prepare e envie o CSV, acompanhe o processamento e consulte a carteira com o mesmo ID.
+<details>
+<summary>Importar e consultar uma carteira</summary>
+
+Informe o ID, prepare e envie o CSV, acompanhe o processamento e consulte a carteira com o mesmo ID.
 
 ![Demonstração de importação e consulta de uma carteira fictícia](examples/demo-carteira.gif)
 
-**Observabilidade:** informe o ID e selecione **Atualizar** para consultar as contagens aproximadas das filas compartilhadas e o histórico de importações do usuário.
+</details>
+
+<details>
+<summary>Consultar a observabilidade</summary>
+
+Informe o ID e selecione **Atualizar** para consultar as filas compartilhadas e o histórico de importações do usuário.
 
 ![Demonstração da página de observabilidade com dados fictícios](examples/demo-observabilidade.gif)
 
-## 🏗️ Arquitetura do Projeto
-O sistema foi desenhado para ser desacoplado e resiliente:
+</details>
 
-* **Ingestão:** API .NET que persiste arquivos no **S3**.
-* **Orquestração:** Infraestrutura como código (**LocalStack**), simulando AWS localmente.
-* **Processamento:** Funções Lambda que reagem a eventos em filas (**SQS**).
-* **Armazenamento:** Persistência estruturada em **Amazon DynamoDB**.
+## Execução local
+
+Os comandos abaixo usam PowerShell a partir da raiz do repositório.
+
+### Pré-requisitos
+
+| Ferramenta | Uso |
+| --- | --- |
+| Docker e Docker Compose | API, LocalStack e empacotamento das Lambdas |
+| Node.js e npm | Interface: Node.js 22.22.2+ na linha 22, 24.15.0+ na linha 24, ou versão 26 ou posterior |
+| SDK .NET 9 | Execução dos testes .NET localmente |
+| Python 3.10 | Execução dos testes das Lambdas localmente |
+| AWS CLI | Opcional, para inspecionar recursos do LocalStack a partir da máquina |
+
+O Docker Desktop, ou o serviço Docker equivalente, deve estar em execução. O primeiro provisionamento precisa baixar imagens e instalar dependências das Lambdas.
+
+### 1. Inicie a API e a infraestrutura
+
+```powershell
+docker compose -f .\src\FiiAnalyticsSolution\docker-compose.yml up -d
+```
+
+O Compose empacota as Lambdas, inicia o LocalStack e constrói a API. Acompanhe o provisionamento:
+
+```powershell
+docker logs -f fiianalytics_localstack
+```
+
+Aguarde a mensagem `PROVISIONAMENTO CONCLUÍDO COM SUCESSO`. A API estará disponível em `http://localhost:5000`; no ambiente de desenvolvimento, o Swagger está em `http://localhost:5000/swagger`.
+
+### 2. Inicie a interface
+
+Em outro terminal, a partir da raiz do repositório:
+
+```powershell
+cd .\src\FiiAnalyticsSolution\frontend
+npm ci
+npm run dev
+```
+
+Abra o endereço informado pelo Vite, normalmente `http://127.0.0.1:5173`. Informe um ID de usuário, selecione um CSV e envie a carteira. A interface acompanha o status da importação; após a conclusão, selecione **Consultar** para carregar a carteira. As cotações ainda podem estar em atualização.
+
+O servidor de desenvolvimento encaminha `/api` para `http://127.0.0.1:5000`. Para outra porta, defina, por exemplo, `$env:API_PROXY_TARGET="http://127.0.0.1:5116"` antes de iniciar o Vite. O build estático precisa ser servido na mesma origem da API ou por um proxy que encaminhe `/api`.
+
+## Formato da carteira
+
+Utilize um arquivo CSV em UTF-8, separado por vírgulas. O exemplo [carteira-ficticia.csv](examples/carteira-ficticia.csv) também pode ser baixado pelo cartão de importação.
+
+```csv
+Ticker,Quantidade,PrecoCompra,TotalProventos
+HGLG11,5,160.25,8.50
+XPLG11,10,102.10,12.00
+```
+
+| Coluna | Formato |
+| --- | --- |
+| `Ticker` | Código do FII |
+| `Quantidade` | Inteiro positivo |
+| `PrecoCompra` | Preço de compra não negativo; `PrecoMedio` também é aceito |
+| `TotalProventos` | Total de proventos da posição |
+
+Use ponto nos valores decimais. Linhas do mesmo ticker são consolidadas com preço médio ponderado, calculado em decimal e armazenado com seis casas.
+
+**Cada importação substitui a carteira inteira.** A versão anterior permanece ativa até a nova ser salva, e uma solicitação mais antiga não sobrescreve uma mais recente. Os snapshots históricos permanecem no DynamoDB e exigem uma política de limpeza caso o projeto cresça.
+
+## Estimativa de proventos
+
+Para cada ativo, o painel calcula:
+
+```text
+estimativa anual bruta = quantidade × cotação × dividend yield ÷ 100
+média mensal = estimativa anual ÷ 12
+```
+
+O dividend yield utilizado é o indicador histórico de 12 meses informado pelo Status Invest. O cálculo usa decimais antes do arredondamento; os totais e os valores por ativo são arredondados separadamente.
+
+A estimativa é ilustrativa: não prevê datas, não garante pagamentos e não considera impostos, reinvestimento ou alterações na carteira. Os proventos podem variar ou não ocorrer. Se o yield de algum ativo estiver ausente ou inválido, a estimativa total fica indisponível. A data dos dados aparece por ativo e pode estar ausente em registros antigos.
+
+## Arquitetura e fluxo de dados
 
 ![Animação do fluxo de importação, processamento, atualização de cotações e agendamento](examples/arquitetura-animada.gif)
 
-Na animação, a interface envia o CSV à API; a API o salva no S3 e publica uma mensagem na fila de importação. A Lambda processa o arquivo, enfileira os ativos para o scraper e ativa a nova carteira no DynamoDB. O scraper consulta o Status Invest e atualiza os indicadores; ele também é acionado periodicamente pelo EventBridge.
+1. A interface envia o CSV à API, que salva o arquivo no S3 e publica uma mensagem na fila de importação.
+2. A Lambda de processamento lê o CSV, consolida os ativos, enfileira solicitações para o scraper e ativa a nova versão da carteira no DynamoDB.
+3. A Lambda de scraping consulta o Status Invest e atualiza os indicadores. O EventBridge também a aciona a cada 24 horas para uma varredura periódica.
+4. A API consulta a carteira, os indicadores e o status de importação para atender à interface.
 
 <details>
 <summary>Ver diagrama estático da arquitetura</summary>
@@ -58,119 +152,82 @@ graph TD
 
 </details>
 
-## 🛠️ Tecnologias Utilizadas
-* 🐍 **Linguagens:** Python 3.10+ (Data Engineering) e C#/.NET (API Service).
-* 💻 **Interface:** React, TypeScript e Vite.
-* ☁️ **Cloud/Infra:** AWS Lambda, Amazon DynamoDB, LocalStack.
-* 🕸️ **Data Scraping:** BeautifulSoup, Requests.
-* 🐳 **Containerização:** Docker & Docker Compose.
-* 📜 **Infraestrutura:** Bash scripts (IaC) via `init-aws.sh`.
+O script de provisionamento configura o ambiente LocalStack. Uma implantação na AWS requer configuração e infraestrutura apropriadas para aquele ambiente.
 
-### 📂 Estrutura do Repositório
-Para facilitar a navegação pelo projeto, esta é a organização da nossa árvore de diretórios:
+## API
 
-* `src/FiiAnalyticsSolution/src/FiiAnalytics.API/`: API desenvolvida em .NET.
-* `src/FiiAnalyticsSolution/src/FiiAnalytics.Application/`: casos de uso, consultas e DTOs.
-* `src/FiiAnalyticsSolution/src/tests/`: testes .NET unitários e de integração com Testcontainers.
-* `src/FiiAnalyticsSolution/serverless/`: Lambdas Python e seus testes.
-* `src/FiiAnalyticsSolution/frontend/`: interface web da carteira.
-* `src/FiiAnalyticsSolution/localstack-init/`: script de provisionamento do LocalStack.
+O Swagger está disponível em `http://localhost:5000/swagger` quando a API é executada em desenvolvimento.
 
-## Fluxo de Dados Automatizado
-1. 🎯 **Gatilho Reativo (Upload):** O usuário faz o upload da carteira via API. O arquivo vai para o S3 e o pipeline processa o CSV, calculando preço médio e alocação.
-2. ⏱️ **Manutenção de Mercado (EventBridge):** Periodicamente, o EventBridge dispara a scraper-ativos-lambda para varrer todos os ativos cadastrados no DynamoDB, garantindo que indicadores (P/VP, DY) reflitam o mercado atual.
-3. 🤖 **Enriquecimento Inteligente:** A scraper-ativos-lambda possui lógica de detecção de origem: se via SQS, processa ativos específicos; se via EventBridge, realiza a varredura global (self-healing).
+| Método | Endpoint | Uso |
+| --- | --- | --- |
+| `POST` | `/api/v1/carteira/importar` | Envia o arquivo no campo `file` e requer `X-Usuario-Id` |
+| `GET` | `/api/v1/carteira/importacoes/{importacaoId}` | Consulta o status com o mesmo cabeçalho `X-Usuario-Id` |
+| `GET` | `/api/v1/carteira/rentabilidade/{usuarioId}` | Consulta a carteira e seus indicadores |
+| `GET` | `/api/v1/carteira/ativo/{ticker}` | Consulta um ativo usando `X-Usuario-Id` |
+| `GET` | `/api/v1/observabilidade` | Consulta importações e filas usando `X-Usuario-Id` |
 
-## 🚀 Passo a Passo para Execução
+Para testar pelo Swagger, execute o `POST` com um ID e um CSV. A API retorna `202 Accepted`, `s3Key` e `importacaoId`; consulte o status com o mesmo ID. Os estados são `PENDENTE`, `PROCESSANDO`, `RETENTANDO`, `CONCLUIDO`, `FALHOU` e `SUPERADA`.
 
-### 1. Pré-requisitos
-* ✅ **Ambiente de Container:** Docker e Docker Desktop instalados e em execução.
-* ✅ **Ferramentas de Cloud:** AWS CLI instalado e configurado.
-* ✅ **Desenvolvimento .NET:** SDK .NET 9.0+ instalado.
-* ✅ **Front-end:** Node.js 22.22.2+ na linha 22, 24.15.0+ na linha 24, ou versão 26 ou posterior; npm.
-    
-### 2. Subir a Infraestrutura Local
-No PowerShell, na raiz do repositório, execute:
-> 💻 `docker compose -f .\src\FiiAnalyticsSolution\docker-compose.yml up -d`
+Os valores monetários serializados usam duas casas decimais; rentabilidade e performance usam quatro casas. Na consulta da carteira, `cotacaoAtualizadaEm` informa a última atualização dos dados de mercado e pode ser `null`.
 
-### Interface web
+## Observabilidade e operação
 
-Com a API e o LocalStack em execução, abra outro terminal PowerShell na raiz do repositório:
+Na página **Observabilidade**, informe o ID e selecione **Atualizar**. São exibidas até 20 importações do usuário, ordenadas pela última atualização, e as contagens das filas de importação e scraping, incluindo suas DLQs.
+
+As filas são compartilhadas por todos os usuários. As contagens são aproximadas, podem demorar a refletir alterações e não são atualizadas automaticamente. Em caso de indisponibilidade do DynamoDB ou SQS, a consulta apresenta erro. A busca percorre o histórico do usuário; para grandes volumes, seria necessário um índice apropriado. Esta visão local não substitui logs, alertas ou uma plataforma de métricas.
+
+Para inspecionar os recursos provisionados:
 
 ```powershell
-cd .\src\FiiAnalyticsSolution\frontend
-npm ci
-npm run dev
-```
-
-Abra o endereço mostrado pelo Vite (normalmente `http://127.0.0.1:5173`). Informe o ID do usuário para consultar a carteira ou enviar um arquivo CSV. O painel acompanha o processamento e, quando a carteira é salva, atualiza a consulta. As cotações ainda podem estar em atualização; nesse caso, consulte novamente mais tarde.
-
-O servidor de desenvolvimento encaminha `/api` para `http://127.0.0.1:5000`, a porta da API no Docker Compose. Para usar outra porta, defina `$env:API_PROXY_TARGET="http://127.0.0.1:5116"` antes de executar `npm run dev`. Para compilar ou testar a interface, execute `npm run build` ou `npm test` na pasta `frontend`. O build estático precisa ser servido na mesma origem da API ou por um proxy que encaminhe `/api`. A performance individual é exibida com duas casas percentuais.
-
-### Observabilidade
-
-No menu **Observabilidade**, informe o ID e selecione **Atualizar**. A página mostra até 20 importações desse usuário, ordenadas pela última atualização, e as contagens das filas de importação e scraping, incluindo suas DLQs. As filas são compartilhadas por todos os usuários; suas contagens são aproximadas e podem demorar a refletir alterações. Os dados não são atualizados automaticamente. Se o DynamoDB ou SQS estiver indisponível, a consulta apresenta erro em vez de números estimados pela aplicação.
-
-O endpoint equivalente é `GET /api/v1/observabilidade`, com o cabeçalho `X-Usuario-Id`. A consulta percorre o histórico do usuário para identificar os registros mais recentemente atualizados; para grandes volumes, seria necessário um índice apropriado. Esta é uma visão operacional local, não substitui logs, alertas ou uma plataforma de métricas. Como não há autenticação, não exponha o endpoint em redes não confiáveis.
-
-### Formato da carteira
-
-O arquivo [carteira-ficticia.csv](examples/carteira-ficticia.csv) é um exemplo com dados fictícios. Use CSV em UTF-8, separado por vírgulas, com as colunas `Ticker`, `Quantidade`, `PrecoCompra` (ou `PrecoMedio`) e `TotalProventos`. Valores decimais usam ponto; a quantidade deve ser um inteiro positivo. Linhas de um mesmo ticker são consolidadas com preço médio ponderado, calculado em decimal e armazenado com seis casas.
-
-O cartão de importação também mostra um exemplo e permite baixar o CSV fictício.
-
-**Cada nova importação substitui a carteira inteira**, não apenas os ativos incluídos no arquivo. A versão anterior permanece disponível até a nova ser salva; uma solicitação mais antiga não sobrescreve uma mais recente. Os snapshots históricos permanecem no DynamoDB e exigem uma política de limpeza se o projeto crescer.
-
-### Estimativa de proventos
-
-O painel estima proventos brutos para os próximos 12 meses usando, para cada ativo, `quantidade × cotação × dividend yield ÷ 100`. O dividend yield é o indicador histórico de 12 meses informado pelo Status Invest; a média mensal é a estimativa anual dividida por 12. Os cálculos usam decimais antes do arredondamento exibido. Os totais e valores por ativo são arredondados separadamente.
-
-Esta é uma projeção ilustrativa baseada na composição atual e em dados passados, não uma previsão de datas ou garantia de pagamento. Os proventos podem variar, não ocorrer ou mudar de periodicidade; o cálculo não considera novas compras, vendas, impostos ou reinvestimento. A data dos dados aparece por ativo e pode estar ausente em registros antigos. Se o dividend yield de algum ativo estiver ausente ou inválido, a estimativa total fica indisponível em vez de tratar o dado ausente como zero. Os tickers e valores do CSV de exemplo são apenas ilustrativos, não recomendações de investimento.
-
-### 3. Monitorar o Provisionamento 
-Para verificar se os serviços foram criados com sucesso, acompanhe os logs:
-```bash
-docker logs -f fiianalytics_localstack
-```
-
-Obs: Você pode reduzir a quantidade de logs, vendo apenas os últimos gerados:
-```bash
 docker logs fiianalytics_localstack --tail 20
+docker exec -it fiianalytics_localstack awslocal s3 ls
+docker exec -it fiianalytics_localstack awslocal sqs list-queues
+docker exec -it fiianalytics_localstack awslocal dynamodb list-tables
+docker exec -it fiianalytics_localstack awslocal lambda list-functions
 ```
 
-Pode validar também toda a infraestrutura AWS criada:
-```bash
-docker exec -it fiianalytics_localstack bash -c "echo '--- S3 Buckets ---'; awslocal s3 ls; echo -e '\n--- SQS Queues ---'; awslocal sqs list-queues; echo -e '\n--- DynamoDB Tables ---'; awslocal dynamodb list-tables; echo -e '\n--- Lambda Functions ---'; awslocal lambda list-functions"
-```
+Com AWS CLI configurada para o ambiente local, também é possível consultar a tabela:
 
-O scraper é acionado pelas mensagens da fila ou pelo agendamento do EventBridge.
-
-### 4. Validar a Persistência no DynamoDB
-```bash
+```powershell
 aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name FiiAnalyticsDb
 ```
 
-### 🧪 Execução de Testes
-O projeto conta com uma suíte de testes robusta que utiliza **Testcontainers** e **LocalStack** para garantir que a integração com os serviços AWS funcione conforme o esperado.
+Os controles e estados são armazenados sob `USER#{id}`; os ativos ficam no snapshot da importação ativa.
 
-**Pré-requisitos para rodar os testes:**
-* Certifique-se de que o **Docker Desktop** esteja em execução.
+### Falhas e limitações
 
-#### 1. Testes Unitários (Rápidos)
-Na raiz do repositório, para rodar apenas os testes que não dependem de infraestrutura externa:
+- As filas tentam novamente mensagens malsucedidas e, após cinco recebimentos, encaminham-nas para `fii-importacao-dlq` ou `scraper-dlq`. Investigue antes de reenviar: o processamento pode ocorrer mais de uma vez.
+- As políticas de DLQ são configuradas no provisionamento de novos ambientes. Em instalações existentes, atualize as filas sem apagar os dados.
+- Se o scraping falhar ou retornar indicadores inválidos, os últimos metadados válidos são preservados. Sem cotação válida, a API retorna HTTP `503` nas consultas de carteira e ativo.
+- Se o upload ao S3 for bem-sucedido e o envio à fila falhar, a API retorna erro, mas o arquivo pode permanecer no bucket e precisar de limpeza.
+- `CONCLUIDO` indica que a carteira foi salva, não que todas as cotações foram atualizadas. Falhas tratadas na última tentativa são marcadas como `FALHOU`.
+- Interrupções abruptas, timeout ou indisponibilidade do DynamoDB podem deixar um status em processamento. Verifique logs e DLQ e reimporte se necessário. A interface avisa quando o status fica sem atualização por mais de sete minutos.
+- Mensagens de importação anteriores à inclusão do identificador não são compatíveis com o processador atual. Processe ou remova-as com cuidado antes da atualização; para mensagens já na DLQ, reimporte os arquivos.
+- A varredura periódica pode encontrar tickers de snapshots históricos e gerar atualizações desnecessárias, sem alterar a carteira ativa.
 
-```bash
+## Testes e build
+
+O GitHub Actions executa testes .NET, testes Python com transações no LocalStack e build e testes do front-end.
+
+### .NET
+
+Na raiz do repositório, para executar os testes que não dependem de infraestrutura externa:
+
+```powershell
 dotnet test .\src\FiiAnalyticsSolution\src\FiiAnalyticsSolution.sln --filter "Category!=Integration"
 ```
-#### 2. Testes de Integração (Com Dependências AWS)
-Para executar a suíte completa de testes (incluindo aqueles que utilizam Testcontainers/LocalStack):
-```bash
+
+Para a suíte completa, incluindo os testes de integração com Testcontainers, inicie o Docker e execute:
+
+```powershell
 dotnet test .\src\FiiAnalyticsSolution\src\FiiAnalyticsSolution.sln
 ```
-*Nota: A primeira execução dos testes de integração pode demorar um pouco mais, pois o Testcontainers precisa fazer o pull das imagens necessárias e configurar o ambiente LocalStack em containers efêmeros.*
 
-#### 3. Testes das Lambdas Python
-Com Python 3.10, crie e ative um ambiente virtual e instale os requisitos das duas Lambdas:
+Na primeira execução, o download das imagens pode aumentar o tempo dos testes. Em caso de falha, verifique o serviço e as permissões do Docker, a disponibilidade do socket e os recursos de memória; no Linux/WSL, verifique também a permissão de acesso ao socket.
+
+### Lambdas Python
+
+Na raiz do repositório, com Python 3.10:
 
 ```powershell
 py -3.10 -m venv .venv
@@ -179,65 +236,44 @@ python -m pip install -r .\src\FiiAnalyticsSolution\serverless\lambdas\processar
 python -m unittest discover -s .\src\FiiAnalyticsSolution\serverless\tests -v
 ```
 
-Para incluir o teste de transações Python, inicie um LocalStack com DynamoDB e defina `$env:FII_TEST_DYNAMODB_ENDPOINT` com o endereço desse serviço antes do comando. O teste cria e remove uma tabela própria. O GitHub Actions executa testes .NET, Python (inclusive transações no LocalStack), build e testes do front-end.
+Para incluir o teste de transações Python, inicie um LocalStack com DynamoDB e defina `$env:FII_TEST_DYNAMODB_ENDPOINT` com seu endereço antes do último comando. O teste cria e remove uma tabela própria.
 
-### Falhas e dados de mercado
+### Front-end
 
-* As filas de importação e scraping tentam novamente mensagens que falharem e, após cinco recebimentos malsucedidos, as encaminham respectivamente para `fii-importacao-dlq` e `scraper-dlq`. Monitore e investigue essas filas antes de reenviar mensagens; o processamento pode ocorrer mais de uma vez.
-* As políticas de DLQ são configuradas no provisionamento de novos ambientes. Em instalações existentes, atualize as filas sem apagar os dados.
-* Se o scraping falhar ou retornar indicadores inválidos, os últimos metadados válidos são preservados. Sem uma cotação válida, as consultas de carteira e ativo retornam HTTP `503` em vez de apresentar uma cotação estimada ou zero.
-* Se o upload ao S3 tiver sucesso, mas o envio à fila falhar, a API retorna erro; o arquivo já enviado pode permanecer no bucket e precisar de limpeza.
-* `CONCLUIDO` indica que a carteira foi salva, não que todas as cotações já foram atualizadas. A data exibida corresponde à última atualização bem-sucedida dos metadados; registros antigos podem não ter data.
-* Falhas tratadas na última tentativa são marcadas como `FALHOU`. Em caso de interrupção abrupta, timeout ou indisponibilidade do DynamoDB, o status pode permanecer em processamento: verifique logs e DLQ e reimporte se necessário. O painel avisa quando o status fica sem atualização por mais de sete minutos.
-* Mensagens de importação criadas antes desta versão não possuem identificador de importação e não são compatíveis com o novo processador. Antes de atualizar, processe ou remova-as com cuidado; para mensagens já na DLQ, reimporte os respectivos arquivos.
-* A varredura periódica de cotações também pode encontrar tickers de snapshots históricos, gerando atualizações desnecessárias. Isso não altera a carteira ativa.
-* A autenticação ainda não foi implementada. Não exponha a API a usuários não confiáveis antes de configurar autenticação e autorização.
+Na pasta `src/FiiAnalyticsSolution/frontend`, após `npm ci`:
 
-### 💡 Dica de Troubleshooting para Testes
-Se o comando `dotnet test` falhar durante a execução dos testes de integração, verifique os pontos abaixo:
+```powershell
+npm run build
+npm test
+```
 
-* **Docker Socket:** Certifique-se de que o **Docker Desktop** ou o serviço do Docker esteja rodando e que seu usuário tenha permissões de acesso ao *socket* do Docker.
-* **Recursos de Sistema:** Como utilizamos **Testcontainers**, garanta que sua máquina tenha memória disponível suficiente para subir os containers do LocalStack.
-* **Permissões:** Em ambientes Linux/WSL, verifique se o seu usuário está no grupo `docker`.
+## Tecnologias e estrutura
 
-## 🧪 Como testar a API
-Após subir a infraestrutura e iniciar sua aplicação .NET, você pode validar o fluxo de ingestão de arquivos:
+| Camada | Tecnologias |
+| --- | --- |
+| Interface | React, TypeScript, Vite |
+| API e aplicação | C# e .NET |
+| Processamento e scraping | Python, pandas, Requests, BeautifulSoup |
+| Serviços e infraestrutura local | S3, SQS, Lambda, DynamoDB, EventBridge, LocalStack e Docker Compose |
+| Testes | Testcontainers, xUnit, unittest e Vitest |
 
-1. **Acesse o Swagger:** Com a API em execução, acesse `http://localhost:5000/swagger`.
-2. **Importação de Carteira:**
-   - Localize o endpoint `POST /api/v1/carteira/importar`.
-   - Clique em **Try it out**.
-   - No campo `X-Usuario-Id`, informe um ID (ex: `123456`).
-   - Faça o upload de um arquivo `.csv` de teste no campo `file`.
-   - Clique em **Execute**.
-3. **Validação:** A API retornará `202 Accepted`, `s3Key` e `importacaoId`. Consulte `GET /api/v1/carteira/importacoes/{importacaoId}` com o mesmo cabeçalho `X-Usuario-Id`. Os estados são `PENDENTE`, `PROCESSANDO`, `RETENTANDO`, `CONCLUIDO`, `FALHOU` e `SUPERADA`.
+```text
+examples/                               Exemplos, capturas e animações
+src/FiiAnalyticsSolution/
+├── frontend/                           Interface web
+├── localstack-init/                    Provisionamento dos recursos locais
+├── serverless/                         Lambdas e testes Python
+├── src/
+│   ├── FiiAnalytics.API/               API HTTP
+│   ├── FiiAnalytics.Application/       Casos de uso, consultas e DTOs
+│   ├── FiiAnalytics.Domain/            Domínio e contratos
+│   ├── FiiAnalytics.Infrastructure/    Repositórios e integrações AWS
+│   └── tests/                          Testes .NET
+└── docker-compose.yml                  Serviços locais
+```
 
-## 📝 Documentação da API (Swagger/OpenAPI)
+Mantenha os scripts e arquivos de configuração em UTF-8 e, para execução em contêineres Linux, com finais de linha LF.
 
-O FII Analytics Engine expõe contratos de API padronizados. A camada de serialização (JsonDecimalFormat) garante a consistência técnica: valores monetários decimais são formatados com 2 casas decimais (F2), enquanto indicadores de rentabilidade/performance seguem o padrão de 4 casas decimais, assegurando precisão na entrega dos dados.
+## Contribuições
 
-### Estrutura do Recurso: `Ativo`
-
-| Campo | Tipo | Descrição |
-| :--- | :--- | :--- |
-| `Ticker` | String | Código do fundo imobiliário |
-| `CotacaoAtual` | String decimal | Última cotação de mercado (F2) |
-| `PrecoMedio` | String decimal | Preço médio do ativo em carteira (F2) |
-| `Performance` | String decimal | Variação relativa de performance (F4) |
-| `CotacaoAtualizadaEm` | Data ou null | Data UTC da última atualização dos metadados |
-
-> **Nota:** Com a API em execução no ambiente de desenvolvimento, o esquema OpenAPI está disponível pelo Swagger.
-
-*O controle e os estados ficam em `USER#123456`; os ativos ficam no snapshot identificado pela importação ativa.*
-
-**⚠️ Nota de Configuração:** Certifique-se de que os arquivos de script e configuração (`init-aws.sh`, `docker-compose.yml` e `Dockerfile`) estejam salvos com codificação **UTF-8** e final de linha **LF (Unix)**. Arquivos salvos com codificação Windows (CRLF) podem causar erros de sintaxe ou falhas de execução dentro dos contêineres Linux.
-
-💡 **Dica de CLI:** Ao executar comandos `aws dynamodb` via terminal Windows (CMD/PowerShell) contra o container, atente-se às aspas. O uso de `docker exec -it <container_nome> awslocal ...` requer tratamento específico de aspas no JSON. Em caso de erro de sintaxe, prefira listar os itens com `scan` ou utilize o PowerShell para garantir a correta interpretação do JSON.
-
----
-
-## 🤝 Contribuições
-Contribuições são bem-vindas! Sinta-se à vontade para abrir uma *Issue* ou enviar um *Pull Request* caso encontre melhorias, correções de bugs ou novas funcionalidades para o pipeline.
-
----
-*Desenvolvido com foco em arquitetura de sistemas distribuídos, processamento de dados em Python e boas práticas de desenvolvimento .NET.*
+Sugestões, issues e pull requests são bem-vindos.
